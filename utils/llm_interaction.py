@@ -40,7 +40,7 @@ class LLMInteraction:
             elif 'anthropic' in baseurl or 'claude' in baseurl:
                 model = f"anthropic/{model}"
             elif 'gemini' in baseurl or 'google' in baseurl:
-                model = f"gemini/{model}"
+                model = f"google/{model}"
             else:
                 model = f"openai/{model}"
         
