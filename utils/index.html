@@ -298,6 +298,103 @@
             margin-left: auto;
         }
         
+        .file-list {
+            max-height: 250px;
+            overflow-y: auto;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            background: #f7fafc;
+            padding: 8px;
+        }
+        
+        .file-list-empty {
+            padding: 20px;
+            text-align: center;
+            color: #a0aec0;
+            font-size: 0.9rem;
+        }
+        
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            margin-bottom: 4px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: white;
+            border: 2px solid transparent;
+        }
+        
+        .file-item:hover {
+            background: #edf2f7;
+            border-color: #cbd5e0;
+        }
+        
+        .file-item.selected {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .file-item.selected:hover {
+            opacity: 0.9;
+        }
+        
+        .file-order {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+        
+        .file-item.selected .file-order {
+            background: white;
+            color: #667eea;
+        }
+        
+        .file-name {
+            flex: 1;
+            font-size: 0.9rem;
+            word-break: break-all;
+        }
+        
+        .file-token-count {
+            font-size: 0.8rem;
+            color: #718096;
+            margin-left: 8px;
+            flex-shrink: 0;
+        }
+        
+        .file-item.selected .file-token-count {
+            color: rgba(255,255,255,0.8);
+        }
+        
+        .selected-files-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+            padding: 12px 16px;
+            background: #edf2f7;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #4a5568;
+        }
+        
+        .btn-small {
+            padding: 6px 14px;
+            font-size: 0.85rem;
+        }
+        
         .vndb-section {
             background: #f7fafc;
             padding: 16px;
@@ -342,6 +439,59 @@
             font-weight: normal;
             font-size: 0.85rem;
         }
+        
+        .compression-switch {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #f7fafc;
+            border-radius: 10px;
+            border: 2px solid #e2e8f0;
+            margin-top: 16px;
+        }
+        
+        .compression-switch-label {
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 0.95rem;
+        }
+        
+        .compression-options {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .compression-option {
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+            color: #718096;
+            background: #e2e8f0;
+            border: 2px solid transparent;
+        }
+        
+        .compression-option:hover {
+            color: #4a5568;
+            background: #cbd5e0;
+        }
+        
+        .compression-option.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .compression-description {
+            font-size: 0.8rem;
+            color: #718096;
+            margin-left: auto;
+            max-width: 300px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
@@ -383,13 +533,23 @@
             <h2 class="card-title">文件选择</h2>
             
             <div class="form-group">
-                <label class="form-label">选择文件</label>
-                <select class="form-input" id="fileSelect" onchange="onFileSelect()">
-                    <option value="">请选择文件...</option>
-                </select>
+                <label class="form-label">选择文件（按点击顺序合并）</label>
+                <div id="fileList" class="file-list">
+                    <div class="file-list-empty">扫描中...</div>
+                </div>
+                <div class="selected-files-info" id="selectedFilesInfo">
+                    <span>已选择: 0 个文件</span>
+                    <button class="btn btn-secondary btn-small" onclick="clearSelectedFiles()">清空选择</button>
+                </div>
             </div>
             
             <div class="token-info empty" id="tokenInfo">未选择文件</div>
+            
+            <div class="form-group" style="margin-top: 16px;">
+                <label class="form-label">切片大小 (k tokens)</label>
+                <input type="number" class="form-input" id="sliceSize" placeholder="50" min="1" max="500" value="50" style="width: 120px;" oninput="onSliceSizeChange()">
+                <span style="color: #718096; font-size: 0.85rem; margin-left: 8px;">每多少k tokens切一次片，默认50k</span>
+            </div>
             
             <div class="section-divider"></div>
             
@@ -422,11 +582,9 @@
                 <input type="text" class="form-input" id="roleName" placeholder="输入要分析的角色名称">
             </div>
             
-            <div id="skillsOnlySection">
-                <div class="form-group">
-                    <label class="form-label optional-label">补充说明</label>
-                    <textarea class="form-input" id="instruction" placeholder="输入任何特定的分析指令..."></textarea>
-                </div>
+            <div class="form-group">
+                <label class="form-label optional-label">补充说明</label>
+                <textarea class="form-input" id="instruction" placeholder="输入任何特定的分析指令..."></textarea>
             </div>
             
             <div class="form-group">
@@ -444,7 +602,7 @@
             <p class="description" id="generateDescription">基于归纳结果生成结构化的技能文件夹</p>
             <div class="form-group">
                 <label class="form-label">选择角色</label>
-                <select class="form-input" id="roleSelect">
+                <select class="form-input" id="roleSelect" onchange="onRoleSelectChange()">
                     <option value="">请选择角色...</option>
                 </select>
             </div>
@@ -454,6 +612,19 @@
                     <label class="form-label optional-label">创作者名称</label>
                     <input type="text" class="form-input" id="creator" placeholder="输入创作者名称">
                 </div>
+            </div>
+            
+            <div class="compression-switch">
+                <span class="compression-switch-label">压缩模式：</span>
+                <div class="compression-options">
+                    <div class="compression-option active" data-mode="original" onclick="switchCompressionMode('original')">传统压缩</div>
+                    <div class="compression-option" data-mode="llm" onclick="switchCompressionMode('llm')">LLM去重</div>
+                </div>
+                <span class="compression-description" id="compressionDescription">使用头尾加权策略压缩摘要</span>
+            </div>
+            
+            <div class="token-info" id="generationTokenInfo" style="margin: 12px 0; padding: 10px; background: #f7fafc; border-radius: 6px; font-size: 0.9rem;">
+                <span style="color: #718096;">请选择角色查看归纳统计</span>
             </div>
             
             <button class="btn btn-primary" onclick="generateSkills()">
@@ -474,9 +645,12 @@
     
     <script>
         let currentFile = '';
+        let selectedFiles = [];
         let previousFiles = [];
         let currentMode = 'skills';
+        let compressionMode = 'original';
         let vndbData = null;
+        let fileTokenCache = {};
         
         function log(message, type = 'normal') {
             const logContent = document.getElementById('logContent');
@@ -517,9 +691,30 @@
             document.getElementById('skillsOnlySection').classList.toggle('hidden', mode !== 'skills');
             document.getElementById('creatorSection').classList.toggle('hidden', mode !== 'chara_card');
 
+            // 重置token信息显示
+            document.getElementById('generationTokenInfo').innerHTML = '<span style="color: #718096;">请选择角色查看归纳统计</span>';
+            document.getElementById('roleSelect').value = '';
+
             scanRoles();
 
             log(`→ 切换到模式: ${mode === 'skills' ? 'Skills' : '角色卡'}`, 'info');
+        }
+        
+        function switchCompressionMode(mode) {
+            compressionMode = mode;
+            
+            document.querySelectorAll('.compression-option').forEach(el => {
+                el.classList.toggle('active', el.dataset.mode === mode);
+            });
+            
+            const descEl = document.getElementById('compressionDescription');
+            if (mode === 'original') {
+                descEl.textContent = '使用头尾加权策略压缩摘要';
+            } else {
+                descEl.textContent = '使用LLM智能去重，实验性功能，极慢';
+            }
+            
+            log(`→ 切换到压缩模式: ${mode === 'original' ? '传统压缩' : 'LLM去重'}`, 'info');
         }
         
         async function fetchVNDBInfo() {
@@ -592,41 +787,204 @@
                 const response = await fetch('/api/files');
                 const result = await response.json();
                 
-                const select = document.getElementById('fileSelect');
-                const currentValue = select.value;
-                
                 const filesChanged = JSON.stringify(result.files) !== JSON.stringify(previousFiles);
                 previousFiles = result.files;
                 
                 if (filesChanged) {
-                    select.innerHTML = '<option value="">请选择文件...</option>';
+                    renderFileList(result.files);
                     
                     if (result.success && result.files.length > 0) {
-                        result.files.forEach(file => {
-                            const option = document.createElement('option');
-                            option.value = file;
-                            option.textContent = file.split('\\').pop();
-                            select.appendChild(option);
-                        });
-                        
-                        if (currentValue && result.files.includes(currentValue)) {
-                            select.value = currentValue;
-                        } else {
-                            currentFile = '';
-                            document.getElementById('tokenInfo').textContent = '未选择文件';
-                            document.getElementById('tokenInfo').className = 'token-info empty';
-                        }
-                        
                         log(`✓ 扫描完成，找到 ${result.files.length} 个文件`, 'success');
-                    } else {
-                        currentFile = '';
-                        document.getElementById('tokenInfo').textContent = '未选择文件';
-                        document.getElementById('tokenInfo').className = 'token-info empty';
                     }
                 }
             } catch (e) {
                 log(`✗ 扫描错误: ${e.message}`, 'error');
             }
+        }
+        
+        function renderFileList(files) {
+            const fileList = document.getElementById('fileList');
+            
+            if (!files || files.length === 0) {
+                fileList.innerHTML = '<div class="file-list-empty">resource 目录中没有 .txt 文件</div>';
+                return;
+            }
+            
+            fileList.innerHTML = '';
+            files.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.dataset.path = file;
+                fileItem.onclick = () => toggleFileSelection(file);
+                
+                const orderIndex = selectedFiles.indexOf(file);
+                const isSelected = orderIndex !== -1;
+                
+                if (isSelected) {
+                    fileItem.classList.add('selected');
+                }
+                
+                const orderNum = isSelected ? orderIndex + 1 : '';
+                const tokenCount = fileTokenCache[file] || 0;
+                const tokenDisplay = tokenCount > 0 ? `(${(tokenCount/1000).toFixed(1)}k tokens)` : '';
+                
+                fileItem.innerHTML = `
+                    <span class="file-order">${orderNum}</span>
+                    <span class="file-name">${file.split('\\').pop()}</span>
+                    <span class="file-token-count">${tokenDisplay}</span>
+                `;
+                
+                fileList.appendChild(fileItem);
+            });
+        }
+        
+        async function toggleFileSelection(filePath) {
+            const index = selectedFiles.indexOf(filePath);
+            
+            if (index === -1) {
+                selectedFiles.push(filePath);
+                await fetchFileTokenCount(filePath);
+            } else {
+                selectedFiles.splice(index, 1);
+            }
+            
+            updateSelectedFilesUI();
+            renderFileList(previousFiles);
+            
+            if (selectedFiles.length > 0) {
+                await calculateTotalTokens();
+            } else {
+                document.getElementById('tokenInfo').textContent = '未选择文件';
+                document.getElementById('tokenInfo').className = 'token-info empty';
+                currentFile = '';
+            }
+        }
+        
+        async function fetchFileTokenCount(filePath) {
+            if (fileTokenCache[filePath]) return;
+            
+            try {
+                const response = await fetch('/api/files/tokens', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_path: filePath, slice_size_k: 50 })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    fileTokenCache[filePath] = result.token_count;
+                    renderFileList(previousFiles);
+                }
+            } catch (e) {
+                console.error('Failed to fetch token count:', e);
+            }
+        }
+        
+        async function calculateTotalTokens() {
+            if (selectedFiles.length === 0) return;
+            
+            const sliceSizeK = parseInt(document.getElementById('sliceSize').value) || 50;
+            let totalTokens = 0;
+            
+            for (const file of selectedFiles) {
+                if (!fileTokenCache[file]) {
+                    await fetchFileTokenCount(file);
+                }
+                totalTokens += fileTokenCache[file] || 0;
+            }
+            
+            const sliceCount = Math.floor(totalTokens / (sliceSizeK * 1000)) + 1;
+            
+            document.getElementById('tokenInfo').textContent = 
+                `📊 总Token: ${totalTokens.toLocaleString()}  |  切片数: ${sliceCount} (${sliceSizeK}k/片)  |  文件数: ${selectedFiles.length}`;
+            document.getElementById('tokenInfo').className = 'token-info';
+            
+            currentFile = selectedFiles[0];
+        }
+        
+        function updateSelectedFilesUI() {
+            const info = document.getElementById('selectedFilesInfo');
+            info.querySelector('span').textContent = `已选择: ${selectedFiles.length} 个文件`;
+        }
+        
+        function onSliceSizeChange() {
+            // 当切片大小改变时，重新计算token信息
+            if (selectedFiles.length > 0) {
+                calculateTotalTokens();
+            }
+        }
+        
+        async function onRoleSelectChange() {
+            const roleName = document.getElementById('roleSelect').value;
+            const tokenInfoEl = document.getElementById('generationTokenInfo');
+            
+            if (!roleName) {
+                tokenInfoEl.innerHTML = '<span style="color: #718096;">请选择角色查看归纳统计</span>';
+                return;
+            }
+            
+            tokenInfoEl.innerHTML = '<span style="color: #718096;">正在计算...</span>';
+            
+            try {
+                // 获取角色的归纳文件
+                const response = await fetch('/api/summaries/files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        role_name: roleName,
+                        mode: currentMode
+                    })
+                });
+                const result = await response.json();
+                
+                if (!result.success || !result.files || result.files.length === 0) {
+                    tokenInfoEl.innerHTML = '<span style="color: #e53e3e;">未找到归纳文件</span>';
+                    return;
+                }
+                
+                // 计算总token数
+                let totalTokens = 0;
+                for (const file of result.files) {
+                    const tokenResponse = await fetch('/api/files/tokens', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ file_path: file })
+                    });
+                    const tokenResult = await tokenResponse.json();
+                    if (tokenResult.success) {
+                        totalTokens += tokenResult.token_count;
+                    }
+                }
+                
+                const contextLimit = 115000;
+                const willCompress = totalTokens > contextLimit;
+                const compressionText = willCompress 
+                    ? `<span style="color: #e53e3e; font-weight: 600;">将触发压缩</span>` 
+                    : '<span style="color: #38a169;">无需压缩</span>';
+                
+                tokenInfoEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>📊 归纳总Token: <strong>${totalTokens.toLocaleString()}</strong></span>
+                        <span>限制: ${contextLimit.toLocaleString()}</span>
+                    </div>
+                    <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0;">
+                        ${compressionText} 
+                        <span style="color: #718096; font-size: 0.85rem;">(${result.files.length} 个归纳文件)</span>
+                    </div>
+                `;
+            } catch (e) {
+                tokenInfoEl.innerHTML = `<span style="color: #e53e3e;">计算失败: ${e.message}</span>`;
+            }
+        }
+        
+        function clearSelectedFiles() {
+            selectedFiles = [];
+            updateSelectedFilesUI();
+            renderFileList(previousFiles);
+            document.getElementById('tokenInfo').textContent = '未选择文件';
+            document.getElementById('tokenInfo').className = 'token-info empty';
+            currentFile = '';
+            log('✓ 已清空文件选择', 'info');
         }
         
         setInterval(scanFiles, 5000);
@@ -672,53 +1030,7 @@
         
         scanRoles();
         
-        async function onFileSelect() {
-            const select = document.getElementById('fileSelect');
-            currentFile = select.value;
-            const tokenInfo = document.getElementById('tokenInfo');
-            
-            if (!currentFile) {
-                tokenInfo.textContent = '未选择文件';
-                tokenInfo.className = 'token-info empty';
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/files/tokens', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ file_path: currentFile })
-                });
-                const result = await response.json();
-                
-                if (result.success) {
-                    tokenInfo.textContent = `📊 Token数量: ${result.formatted_tokens}  |  切片数: ${result.slice_count}`;
-                    tokenInfo.className = 'token-info';
-                    log(`✓ Token统计: ${result.formatted_tokens} tokens, 需要 ${result.slice_count} 个切片`, 'success');
-                    
-                    log('→ 正在切片文件...', 'info');
-                    const sliceResponse = await fetch('/api/slice', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ file_path: currentFile })
-                    });
-                    const sliceResult = await sliceResponse.json();
-                    
-                    if (sliceResult.success) {
-                        log(`✓ ${sliceResult.message}`, 'success');
-                    } else {
-                        log(`✗ 切片失败: ${sliceResult.message}`, 'error');
-                    }
-                } else {
-                    tokenInfo.textContent = '计算失败';
-                    tokenInfo.className = 'token-info empty';
-                }
-            } catch (e) {
-                tokenInfo.textContent = '计算失败';
-                tokenInfo.className = 'token-info empty';
-                log(`✗ 错误: ${e.message}`, 'error');
-            }
-        }
+
         
         function getConfig() {
             const baseurl = document.getElementById('baseurl').value;
@@ -735,35 +1047,54 @@
         async function startSummarize() {
             const roleName = document.getElementById('roleName').value;
             const concurrency = parseInt(document.getElementById('concurrency').value) || 1;
+            const sliceSizeK = parseInt(document.getElementById('sliceSize').value) || 50;
             
             if (!roleName) {
                 log('⚠ 请输入角色名称', 'warning');
                 return;
             }
             
-            if (!currentFile) {
+            if (selectedFiles.length === 0) {
                 log('⚠ 请先选择文件', 'warning');
                 return;
             }
             
             const btn = event.target.closest('button');
             setLoading(btn, true);
-            log(`→ 开始为角色归纳: ${roleName} (模式: ${currentMode === 'skills' ? 'Skills' : '角色卡'}, 并发: ${concurrency})`, 'info');
+            log(`→ 开始为角色归纳: ${roleName} (模式: ${currentMode === 'skills' ? 'Skills' : '角色卡'}, 并发: ${concurrency}, 文件数: ${selectedFiles.length})`, 'info');
             
             try {
+                log('→ 正在合并并切片文件...', 'info');
+                const sliceResponse = await fetch('/api/slice', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        file_paths: selectedFiles, 
+                        slice_size_k: sliceSizeK 
+                    })
+                });
+                const sliceResult = await sliceResponse.json();
+                
+                if (!sliceResult.success) {
+                    log(`✗ 切片失败: ${sliceResult.message}`, 'error');
+                    setLoading(btn, false);
+                    return;
+                }
+                
+                log(`✓ ${sliceResult.message}`, 'success');
+                
                 const requestData = {
                     role_name: roleName,
-                    file_path: currentFile,
+                    file_paths: selectedFiles,
                     concurrency: concurrency,
                     mode: currentMode,
+                    slice_size_k: sliceSizeK,
                     output_language: document.getElementById('outputLanguage').value,
                     vndb_data: vndbData,
                     ...getConfig()
                 };
                 
-                if (currentMode === 'skills') {
-                    requestData.instruction = document.getElementById('instruction').value;
-                }
+                requestData.instruction = document.getElementById('instruction').value;
                 
                 const response = await fetch('/api/summarize', {
                     method: 'POST',
@@ -806,6 +1137,7 @@
                     mode: currentMode,
                     output_language: document.getElementById('outputLanguage').value,
                     vndb_data: vndbData,
+                    compression_mode: compressionMode,
                     ...getConfig()
                 };
                 

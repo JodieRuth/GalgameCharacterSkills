@@ -7,6 +7,8 @@ import json
 import requests
 import zlib
 import base64
+import tiktoken
+import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
@@ -14,6 +16,8 @@ from flask_cors import CORS
 from utils.llm_interaction import LLMInteraction
 from utils.file_processor import FileProcessor
 from utils.tool_handler import ToolHandler
+
+_tokenizer = tiktoken.get_encoding("cl100k_base")
 
 
 def load_r18_traits():
@@ -286,8 +290,438 @@ def _build_prioritized_skill_generation_context(summary_files, target_total_char
 def _estimate_tokens_from_text(text):
     if not text:
         return 0
-    # Conservative rough estimate for mixed Chinese/Japanese/English content.
-    return max(1, len(text) // 2)
+    try:
+        return len(_tokenizer.encode(text))
+    except Exception:
+        return max(1, len(text) // 2)
+
+
+def _group_summaries_for_llm_compression(summary_files, group_size=100000):
+    groups = []
+    current_group = []
+    current_tokens = 0
+    group_index = 0
+    
+    for file_path in summary_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            file_tokens = _estimate_tokens_from_text(content)
+            
+            if file_tokens > group_size:
+                if current_group:
+                    groups.append((group_index, current_group, len(current_group)))
+                    group_index += 1
+                    current_group = []
+                    current_tokens = 0
+                groups.append((group_index, [file_path], 1))
+                group_index += 1
+            else:
+                if current_tokens + file_tokens > group_size and current_group:
+                    groups.append((group_index, current_group, len(current_group)))
+                    group_index += 1
+                    current_group = [file_path]
+                    current_tokens = file_tokens
+                else:
+                    current_group.append(file_path)
+                    current_tokens += file_tokens
+        except Exception as e:
+            print(f"Warning: Failed to read {file_path}: {e}")
+            continue
+    
+    if current_group:
+        groups.append((group_index, current_group, len(current_group)))
+    
+    return groups
+
+
+def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000):
+    print(f"Starting LLM-based compression for {len(summary_files)} files")
+    
+    total_tokens = 0
+    file_contents = {}  
+    file_path_map = {}  
+    
+    for file_path in summary_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            basename = os.path.basename(file_path)
+            file_contents[basename] = content
+            file_path_map[basename] = file_path
+            total_tokens += _estimate_tokens_from_text(content)
+        except Exception as e:
+            print(f"Warning: Failed to read {file_path}: {e}")
+            continue
+    
+    print(f"Total tokens: {total_tokens}")
+    
+    if total_tokens <= target_budget_tokens:
+        print(f"Total tokens ({total_tokens}) <= target ({target_budget_tokens}), skipping compression")
+        return "\n\n".join([f"=== {basename} ===\n{content}" for basename, content in file_contents.items()])
+    
+    import tempfile
+    import shutil
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    temp_base_dir = os.path.join(project_root, 'temp')
+    os.makedirs(temp_base_dir, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(prefix='llm_compression_', dir=temp_base_dir)
+    temp_file_map = {}  
+    
+    for basename, original_path in file_path_map.items():
+        temp_path = os.path.join(temp_dir, basename)
+        shutil.copy2(original_path, temp_path)
+        temp_file_map[basename] = temp_path
+    
+    print(f"Created temp workspace: {temp_dir}")
+    
+    tokens_per_group = 100000
+    num_groups = max(1, math.ceil(total_tokens / tokens_per_group))
+    
+    files_per_group = math.ceil(len(summary_files) / num_groups)
+    
+    print(f"Dividing into {num_groups} groups, ~{files_per_group} files per group")
+    
+    for group_idx in range(num_groups):
+        start_idx = group_idx * files_per_group
+        end_idx = min((group_idx + 1) * files_per_group, len(summary_files))
+        group_files = summary_files[start_idx:end_idx]
+        
+        if not group_files:
+            continue
+        
+        group_files_content = {}
+        group_file_map = {}  
+        group_tokens = 0
+        for fp in group_files:
+            basename = os.path.basename(fp)
+            if basename in file_contents:
+                group_files_content[basename] = file_contents[basename]
+                group_tokens += _estimate_tokens_from_text(file_contents[basename])
+
+                if basename in temp_file_map:
+                    group_file_map[basename] = temp_file_map[basename]
+        
+        print(f"Processing group {group_idx + 1}/{num_groups}: {len(group_files)} files, ~{group_tokens} tokens")
+        
+        group_info = {
+            'group_index': group_idx,
+            'total_groups': num_groups,
+            'file_count': len(group_files)
+        }
+        
+        messages, tools = llm_client.compress_content_with_llm(group_files_content, group_info)
+        
+        try:
+            max_iterations = 50
+            iteration = 0
+            total_processed = 0
+            
+            while iteration < max_iterations:
+                iteration += 1
+                response = llm_client.send_message(messages, tools, max_retries=2, use_counter=False)
+                
+                if not response or not hasattr(response, 'choices') or not response.choices:
+                    print(f"Warning: LLM returned no response for group {group_idx + 1}, iteration {iteration}")
+                    break
+                
+                message = response.choices[0].message
+                
+                if not hasattr(message, 'tool_calls') or not message.tool_calls:
+                    print(f"Group {group_idx + 1}: No more tool calls after {iteration} iterations")
+                    break
+                
+                tool_results = []
+                has_remove_call = False
+                
+                for tool_call in message.tool_calls:
+                    if tool_call.function.name == 'remove_duplicate_sections':
+                        has_remove_call = True
+                        import json
+                        arguments = json.loads(tool_call.function.arguments)
+                        file_sections = arguments.get('file_sections', [])
+                        
+                        duplicate_tracking = {}
+                        
+                        for section in file_sections:
+                            filename = section.get('filename', '')
+                            content = section.get('content', '')
+                            if not content or not filename:
+                                continue
+                            
+                            if filename in group_file_map:
+                                temp_path = group_file_map[filename]
+                                if content not in duplicate_tracking:
+                                    duplicate_tracking[content] = []
+                                duplicate_tracking[content].append((filename, temp_path))
+                        
+                        processed_count = 0
+                        for content, file_list in duplicate_tracking.items():
+                            if len(file_list) <= 1:
+                                continue
+                            
+                            for filename, temp_path in file_list[1:]:
+                                try:
+                                    with open(temp_path, 'r', encoding='utf-8') as f:
+                                        file_content = f.read()
+                                    
+                                    if content in file_content:
+                                        new_content = file_content.replace(content, '')
+                                        with open(temp_path, 'w', encoding='utf-8') as f:
+                                            f.write(new_content)
+                                        processed_count += 1
+                                except Exception as e:
+                                    print(f"  - Error processing {filename}: {e}")
+                        
+                        total_processed += processed_count
+                        tool_results.append({
+                            'tool_call_id': tool_call.id if hasattr(tool_call, 'id') else tool_call.get('id'),
+                            'result': f"Removed duplicates from {processed_count} files"
+                        })
+                
+                if not has_remove_call:
+                    print(f"Warning: LLM did not call remove_duplicate_sections in iteration {iteration}")
+                    break
+                
+                messages.append({
+                    "role": "assistant",
+                    "content": message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id if hasattr(tc, 'id') else tc.get('id'),
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name if hasattr(tc, 'function') else tc['function']['name'],
+                                "arguments": tc.function.arguments if hasattr(tc, 'function') else tc['function']['arguments']
+                            }
+                        } for tc in message.tool_calls
+                    ]
+                })
+                
+                for result in tool_results:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": result['tool_call_id'],
+                        "content": json.dumps({"status": "success", "message": result['result']})
+                    })
+                
+                print(f"Group {group_idx + 1}, iteration {iteration}: processed {len(tool_results)} tool calls, removed from {total_processed} files so far")
+            
+            print(f"Group {group_idx + 1} complete: total {total_processed} files modified in {iteration} iterations")
+                
+        except Exception as e:
+            print(f"Error processing group {group_idx + 1}: {e}")
+    
+    final_content_parts = []
+    final_tokens = 0
+    for basename in file_contents.keys():
+        temp_path = temp_file_map.get(basename)
+        if not temp_path:
+            continue
+        try:
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            final_content_parts.append(f"=== {basename} ===\n{content}")
+            final_tokens += _estimate_tokens_from_text(content)
+        except Exception as e:
+            print(f"Warning: Failed to read temp file {temp_path}: {e}")
+            final_content_parts.append(f"=== {basename} ===\n{file_contents[basename]}")
+            final_tokens += _estimate_tokens_from_text(file_contents[basename])
+    
+    try:
+        shutil.rmtree(temp_dir)
+        print(f"Cleaned up temp workspace: {temp_dir}")
+    except Exception as e:
+        print(f"Warning: Failed to cleanup temp dir: {e}")
+    
+    final_content = "\n\n".join(final_content_parts)
+    print(f"Final result: {total_tokens} -> {final_tokens} tokens ({final_tokens/total_tokens*100:.1f}%)")
+    
+    return final_content
+
+
+def _compress_analyses_with_llm(analyses, llm_client, target_budget_tokens=115000):
+    print(f"Starting compression for {len(analyses)} analyses")
+    
+    total_tokens = 0
+    analysis_contents = {}
+    for idx, analysis in enumerate(analyses):
+        key = f"analysis_{idx:03d}"
+        content = json.dumps(analysis, ensure_ascii=False)
+        analysis_contents[key] = content
+        total_tokens += _estimate_tokens_from_text(content)
+    
+    print(f"Total tokens: {total_tokens}")
+    
+    if total_tokens <= target_budget_tokens:
+        print(f"Total tokens ({total_tokens}) <= target ({target_budget_tokens}), skipping compression")
+        return analyses
+    
+    tokens_per_group = 100000
+    num_groups = max(1, math.ceil(total_tokens / tokens_per_group))
+    
+    analyses_per_group = math.ceil(len(analyses) / num_groups)
+    
+    print(f"Dividing into {num_groups} groups, ~{analyses_per_group} analyses per group")
+    
+    import tempfile
+    import shutil
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    temp_base_dir = os.path.join(project_root, 'temp')
+    os.makedirs(temp_base_dir, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(prefix='analyses_compression_', dir=temp_base_dir)
+    temp_file_map = {}
+    
+    for key, content in analysis_contents.items():
+        temp_path = os.path.join(temp_dir, f"{key}.json")
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        temp_file_map[key] = temp_path
+    
+    print(f"Created temp workspace: {temp_dir}")
+    
+    for group_idx in range(num_groups):
+        start_idx = group_idx * analyses_per_group
+        end_idx = min((group_idx + 1) * analyses_per_group, len(analyses))
+        group_keys = list(analysis_contents.keys())[start_idx:end_idx]
+        
+        if not group_keys:
+            continue
+        
+        group_files_content = {}
+        group_file_map = {}  
+        group_tokens = 0
+        for key in group_keys:
+            with open(temp_file_map[key], 'r', encoding='utf-8') as f:
+                content = f.read()
+            group_files_content[f"{key}.json"] = content
+            group_tokens += _estimate_tokens_from_text(content)
+            group_file_map[key] = temp_file_map[key]
+        
+        print(f"Processing group {group_idx + 1}/{num_groups}: {len(group_keys)} analyses, ~{group_tokens} tokens")
+        
+        group_info = {
+            'group_index': group_idx,
+            'total_groups': num_groups,
+            'file_count': len(group_keys)
+        }
+        
+        messages, tools = llm_client.compress_content_with_llm(group_files_content, group_info)
+        
+        try:
+            max_iterations = 50
+            iteration = 0
+            total_processed = 0
+            
+            while iteration < max_iterations:
+                iteration += 1
+                response = llm_client.send_message(messages, tools, max_retries=2, use_counter=False)
+                
+                if not response or not hasattr(response, 'choices') or not response.choices:
+                    print(f"Warning: LLM returned no response for group {group_idx + 1}, iteration {iteration}")
+                    break
+                
+                message = response.choices[0].message
+                
+                if not hasattr(message, 'tool_calls') or not message.tool_calls:
+                    print(f"Group {group_idx + 1}: No more tool calls after {iteration} iterations")
+                    break
+                
+                tool_results = []
+                has_remove_call = False
+                
+                for tool_call in message.tool_calls:
+                    if tool_call.function.name == 'remove_duplicate_sections':
+                        has_remove_call = True
+                        import json
+                        arguments = json.loads(tool_call.function.arguments)
+                        file_sections = arguments.get('file_sections', [])
+                        
+                        processed_count = 0
+                        for section in file_sections:
+                            filename = section.get('filename', '')
+                            content_to_remove = section.get('content', '')
+                            key = filename.replace('.json', '')
+                            if key in group_file_map:
+                                temp_path = group_file_map[key]
+                                try:
+                                    with open(temp_path, 'r', encoding='utf-8') as f:
+                                        file_content = f.read()
+                                    if content_to_remove in file_content:
+                                        new_content = file_content.replace(content_to_remove, '')
+                                        with open(temp_path, 'w', encoding='utf-8') as f:
+                                            f.write(new_content)
+                                        processed_count += 1
+                                except Exception as e:
+                                    print(f"Error processing {filename}: {e}")
+                        
+                        total_processed += processed_count
+                        tool_results.append({
+                            'tool_call_id': tool_call.id if hasattr(tool_call, 'id') else tool_call.get('id'),
+                            'result': f"Removed {processed_count} sections"
+                        })
+                
+                if not has_remove_call:
+                    print(f"Warning: LLM did not call remove_duplicate_sections in iteration {iteration}")
+                    break
+                
+                messages.append({
+                    "role": "assistant",
+                    "content": message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id if hasattr(tc, 'id') else tc.get('id'),
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name if hasattr(tc, 'function') else tc['function']['name'],
+                                "arguments": tc.function.arguments if hasattr(tc, 'function') else tc['function']['arguments']
+                            }
+                        } for tc in message.tool_calls
+                    ]
+                })
+                
+                for result in tool_results:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": result['tool_call_id'],
+                        "content": json.dumps({"status": "success", "message": result['result']})
+                    })
+                
+                print(f"Group {group_idx + 1}, iteration {iteration}: processed {len(tool_results)} tool calls, removed {total_processed} sections so far")
+            
+            print(f"Group {group_idx + 1} complete: total {total_processed} sections modified in {iteration} iterations")
+                
+        except Exception as e:
+            print(f"Error processing group {group_idx + 1}: {e}")
+    
+    compressed_analyses = []
+    final_tokens = 0
+    for idx, key in enumerate(analysis_contents.keys()):
+        temp_path = temp_file_map.get(key)
+        if not temp_path:
+            continue
+        try:
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            if content.strip():  
+                analysis = json.loads(content)
+                compressed_analyses.append(analysis)
+                final_tokens += _estimate_tokens_from_text(content)
+        except Exception as e:
+            print(f"Warning: Failed to read temp file {temp_path}: {e}")
+            compressed_analyses.append(analyses[idx])
+            final_tokens += _estimate_tokens_from_text(analysis_contents[key])
+    
+    try:
+        shutil.rmtree(temp_dir)
+        print(f"Cleaned up temp workspace: {temp_dir}")
+    except Exception as e:
+        print(f"Warning: Failed to cleanup temp dir: {e}")
+    
+    print(f"Final result: {len(analyses)} analyses, {total_tokens} -> {final_tokens} tokens ({final_tokens/total_tokens*100:.1f}%)")
+    
+    return compressed_analyses
+
 
 def get_llm_client():
     data = request.json if request.is_json else {}
@@ -401,11 +835,12 @@ def get_summary_files():
 def calculate_tokens():
     data = request.json
     file_path = data.get('file_path', '')
+    slice_size_k = data.get('slice_size_k', 50)
     if not file_path:
         return jsonify({'success': False, 'message': '未提供文件路径'})
     try:
         token_count = file_processor.calculate_tokens(file_path)
-        slice_count = file_processor.calculate_slices(token_count)
+        slice_count = file_processor.calculate_slices(token_count, slice_size_k)
         return jsonify({
             'success': True,
             'token_count': token_count,
@@ -418,16 +853,26 @@ def calculate_tokens():
 @app.route('/api/slice', methods=['POST'])
 def slice_file():
     data = request.json
-    selected_file = data.get('file_path', '')
-    if not selected_file:
+    slice_size_k = data.get('slice_size_k', 50)
+    
+    file_paths = data.get('file_paths', [])
+    if not file_paths:
+        single_file = data.get('file_path', '')
+        if single_file:
+            file_paths = [single_file]
+    
+    if not file_paths:
         return jsonify({'success': False, 'message': '请先选择文件'})
+    
     try:
         global current_slices
-        current_slices = file_processor.slice_file(selected_file)
+        current_slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
+        file_count = len(file_paths)
         return jsonify({
             'success': True,
-            'message': f'文件已切片，共 {len(current_slices)} 个切片',
-            'slice_count': len(current_slices)
+            'message': f'已合并 {file_count} 个文件并切片，共 {len(current_slices)} 个切片',
+            'slice_count': len(current_slices),
+            'file_count': file_count
         })
     except Exception as e:
         return jsonify({
@@ -507,17 +952,23 @@ def summarize():
     data = request.json
     role_name = data.get('role_name', '')
     instruction = data.get('instruction', '')
-    selected_file = data.get('file_path', '')
     concurrency = data.get('concurrency', 1)
     mode = data.get('mode', 'skills')
     
+    file_paths = data.get('file_paths', [])
+    if not file_paths:
+        single_file = data.get('file_path', '')
+        if single_file:
+            file_paths = [single_file]
+    
     if not role_name:
         return jsonify({'success': False, 'message': '请输入角色名称'})
-    if not selected_file:
+    if not file_paths:
         return jsonify({'success': False, 'message': '请先选择文件'})
     
     llm_interaction = get_llm_client()
-    current_slices = file_processor.slice_file(selected_file)
+    slice_size_k = data.get('slice_size_k', 50)
+    current_slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
     LLMInteraction.set_total_requests(len(current_slices))
     
     summaries = []
@@ -526,9 +977,15 @@ def summarize():
     all_character_analyses = []
     all_lorebook_entries = []
     
-    file_name = os.path.basename(selected_file)
-    name, ext = os.path.splitext(file_name)
-    summary_dir = os.path.join(os.path.dirname(selected_file), f"{name}_summaries")
+    if len(file_paths) == 1:
+        file_name = os.path.basename(file_paths[0])
+        name, ext = os.path.splitext(file_name)
+        summary_dir = os.path.join(os.path.dirname(file_paths[0]), f"{name}_summaries")
+    else:
+        first_dir = os.path.dirname(file_paths[0])
+        name = os.path.basename(file_paths[0])
+        name = os.path.splitext(name)[0]
+        summary_dir = os.path.join(first_dir, f"{name}_merged_summaries")
     os.makedirs(summary_dir, exist_ok=True)
     
     config = {
@@ -609,6 +1066,7 @@ def generate_skills_folder(data):
     role_name = data.get('role_name', '')
     vndb_data = clean_vndb_data(data.get('vndb_data'))
     output_language = data.get('output_language', '')
+    compression_mode = data.get('compression_mode', 'original')
     
     script_dir = get_base_dir()
     summary_files = []
@@ -625,16 +1083,25 @@ def generate_skills_folder(data):
     raw_full_text = _build_full_skill_generation_context(summary_files)
     raw_total_chars = len(raw_full_text)
     raw_estimated_tokens = _estimate_tokens_from_text(raw_full_text)
-    context_limit_tokens = 128000
-    target_budget_tokens = 100000
+    context_limit_tokens = 115000  
+    target_budget_tokens = 115000
+    
+    print(f"Compression mode: {compression_mode}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
 
     if raw_estimated_tokens > context_limit_tokens:
-        target_budget_chars = target_budget_tokens * 2
-        summaries_text = _build_prioritized_skill_generation_context(
-            summary_files,
-            target_total_chars=target_budget_chars
-        )
-        context_mode = "compressed"
+        if compression_mode == 'llm':
+            print(f"Using LLM compression")
+            llm_interaction = get_llm_client()
+            summaries_text = _compress_with_llm(summary_files, llm_interaction, target_budget_tokens)
+            context_mode = "llm_compressed"
+        else:
+            print(f"Using original compression")
+            target_budget_chars = target_budget_tokens * 2
+            summaries_text = _build_prioritized_skill_generation_context(
+                summary_files,
+                target_total_chars=target_budget_chars
+            )
+            context_mode = "compressed"
     else:
         summaries_text = raw_full_text
         context_mode = "full"
@@ -644,12 +1111,18 @@ def generate_skills_folder(data):
     compressed_chars = len(summaries_text)
     estimated_tokens = _estimate_tokens_from_text(summaries_text)
     compression_ratio = (compressed_chars / raw_total_chars) if raw_total_chars else 0
+    strategy_name = {
+        'full': 'full_context',
+        'compressed': 'head_tail_weighted_1_2_then_key_sections',
+        'llm_compressed': 'llm_deduplication'
+    }.get(context_mode, 'unknown')
+    
     print(
         f"[SkillGen] role={role_name} files={len(summary_files)} mode={context_mode} "
         f"raw_chars={raw_total_chars} raw_estimated_tokens={raw_estimated_tokens} "
         f"final_chars={compressed_chars} final_estimated_tokens={estimated_tokens} "
         f"compression_ratio={compression_ratio:.2%} "
-        f"strategy={'head_tail_weighted_1_2_then_key_sections' if context_mode == 'compressed' else 'full_context'}"
+        f"strategy={strategy_name}"
     )
     llm_interaction = get_llm_client()
     messages, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
@@ -796,6 +1269,7 @@ def generate_character_card(data):
     vndb_data_raw = data.get('vndb_data')
     vndb_data = clean_vndb_data(vndb_data_raw)
     output_language = data.get('output_language', '')
+    compression_mode = data.get('compression_mode', 'original')
 
     script_dir = get_base_dir()
 
@@ -825,6 +1299,33 @@ def generate_character_card(data):
 
     if not all_character_analyses:
         return jsonify({'success': False, 'message': '分析数据为空'})
+
+    analyses_text = json.dumps(all_character_analyses, ensure_ascii=False)
+    raw_estimated_tokens = _estimate_tokens_from_text(analyses_text)
+    context_limit_tokens = 115000
+    target_budget_tokens = 115000
+    
+    print(f"[CharaCard] Compression mode: {compression_mode}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
+
+    if raw_estimated_tokens > context_limit_tokens:
+        if compression_mode == 'llm':
+            print(f"[CharaCard] Using LLM compression for analyses")
+            llm_interaction = get_llm_client()
+            compressed_analyses = _compress_analyses_with_llm(all_character_analyses, llm_interaction, target_budget_tokens)
+            all_character_analyses = compressed_analyses
+            context_mode = "llm_compressed"
+        else:
+            print(f"[CharaCard] Using original compression")
+            target_count = max(1, len(all_character_analyses) * target_budget_tokens // raw_estimated_tokens)
+            all_character_analyses = all_character_analyses[:target_count]
+            context_mode = "compressed"
+        
+        compressed_text = json.dumps(all_character_analyses, ensure_ascii=False)
+        compressed_tokens = _estimate_tokens_from_text(compressed_text)
+        print(f"[CharaCard] Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
+    else:
+        context_mode = "full"
+        print(f"[CharaCard] No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})")
 
     output_dir = os.path.join(script_dir, f"{role_name}-character-card")
     os.makedirs(output_dir, exist_ok=True)
