@@ -955,22 +955,37 @@ def process_single_slice(args):
             else:
                 content = choice.message.content if hasattr(choice, 'message') and choice.message.content else ""
                 if content:
-                    retry_response = llm_client.organize_and_write_markdown(
-                        content,
-                        output_file_path,
+                    retry_instruction = (
+                        f"{instruction}\n\n"
+                        "RETRY REQUIREMENT:\n"
+                        "- This is a retry because the previous response did not call write_file.\n"
+                        f"- You MUST produce organized markdown and call write_file to exactly this path: {output_file_path}\n"
+                        "- Do NOT return plain chat text only.\n"
+                        "- Re-analyze the original slice content directly instead of just rephrasing the previous answer."
+                    )
+                    retry_response = llm_client.summarize_content(
+                        slice_content,
                         role_name,
-                        output_language
+                        retry_instruction,
+                        output_file_path,
+                        output_language,
+                        vndb_data,
+                        retry_guidance=(
+                            "You are retrying the same summarization task. "
+                            "You MUST return organized markdown and MUST call write_file. "
+                            "Do not skip the tool call."
+                        )
                     )
                     retry_tool_calls = llm_client.get_tool_response(retry_response)
                     if retry_tool_calls:
                         for tool_call in retry_tool_calls:
                             tool_result = ToolHandler.handle_tool_call(tool_call)
                             result['tool_results'].append(tool_result)
-                        result['tool_results'].append("Recovered by organize-and-write retry")
+                        result['tool_results'].append("Recovered by summarize_content retry")
                         result['success'] = True
                         result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
                     else:
-                        result['tool_results'].append("Retry failed: no tool call returned during organize-and-write")
+                        result['tool_results'].append("Retry failed: no tool call returned during summarize_content retry")
                 else:
                     result['tool_results'].append("No tool call and no content returned")
     

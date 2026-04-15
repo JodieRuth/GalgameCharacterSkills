@@ -120,58 +120,6 @@ class LLMInteraction:
                 return choice.message.tool_calls
         return None
 
-    def organize_and_write_markdown(self, draft_content, output_file_path, role_name, output_language=""):
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "write_file",
-                    "description": "Write file to local disk",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "File path"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "File content in markdown format"
-                            }
-                        },
-                        "required": ["file_path", "content"]
-                    }
-                }
-            }
-        ]
-
-        system_prompt = f"""You are a markdown整理助手.
-Your task is to take an existing draft and rewrite it into clean, structured markdown, then save it with the write_file tool.
-
-REQUIREMENTS:
-1. You MUST reorganize the draft content before saving it.
-2. You MUST call the write_file tool and save to exactly: {output_file_path}
-3. Do NOT return the final content as plain chat text only.
-4. Keep the original meaning, but improve structure, readability, and formatting.
-5. If the content is a plot recap, keep it concise and well-structured.
-6. If the content is a character analysis, preserve its analysis structure while cleaning it up.
-7. The output must remain focused on role "{role_name}" when applicable."""
-
-        if output_language:
-            lang_names = {"zh": "中文", "en": "English", "ja": "日本語"}
-            lang_name = lang_names.get(output_language, output_language)
-            system_prompt += f"""
-
-## OUTPUT LANGUAGE
-You MUST write the final markdown in {lang_name}."""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Please reorganize the following draft into clean markdown and save it with write_file.\n\nDraft:\n{draft_content}"}
-        ]
-
-        return self.send_message(messages, tools, use_counter=False)
-    
     def generate_cleanup_script(self, file_content, source_file_path, output_file_path):
         file_name = os.path.basename(source_file_path)
         name, ext = os.path.splitext(file_name)
@@ -236,7 +184,7 @@ IMPORTANT: Use the write_file tool to save the generated script to EXACTLY this 
         
         return self.send_message(messages, tools), script_file_path
     
-    def summarize_content(self, content, role_name, instruction, output_file_path, output_language="", vndb_data=None):
+    def summarize_content(self, content, role_name, instruction, output_file_path, output_language="", vndb_data=None, retry_guidance=""):
         tools = [
             {
                 "type": "function",
@@ -344,6 +292,12 @@ DO NOT:
 - Confuse the character's voice with narrative description
 
 Additional instructions: {instruction}"""
+
+        if retry_guidance:
+            system_prompt += f"""
+
+## RETRY REQUIREMENT
+{retry_guidance}"""
 
         if output_language:
             lang_names = {"zh": "中文", "en": "English", "ja": "日本語"}
