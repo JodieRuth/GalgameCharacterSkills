@@ -21,8 +21,9 @@ class FileProcessor:
         files = []
         if os.path.exists(self.resource_dir):
             for file in os.listdir(self.resource_dir):
-                if file.endswith(".txt"):
-                    files.append(os.path.join(self.resource_dir, file))
+                file_path = os.path.join(self.resource_dir, file)
+                if os.path.isfile(file_path) and (file.endswith(".txt") or file.endswith(".md")):
+                    files.append(file_path)
         return files
     
     def calculate_tokens(self, file_path):
@@ -34,22 +35,45 @@ class FileProcessor:
         except Exception as e:
             return 0
     
-    def calculate_slices(self, token_count):
-        slice_size = 50000
+    def calculate_slices(self, token_count, slice_size_k=50):
+        slice_size = slice_size_k * 1000
         return (token_count // slice_size) + 1
     
-    def slice_file(self, file_path):
+    def slice_file(self, file_path, slice_size_k=50):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             token_count = self.calculate_tokens(file_path)
-            slice_count = self.calculate_slices(token_count)
+            slice_count = self.calculate_slices(token_count, slice_size_k)
             lines_per_slice = len(lines) // slice_count
             slices = []
             for i in range(slice_count):
                 start_line = i * lines_per_slice
                 end_line = (i + 1) * lines_per_slice if i < slice_count - 1 else len(lines)
                 slice_content = ''.join(lines[start_line:end_line])
+                slices.append(slice_content)
+            return slices
+        except Exception as e:
+            return []
+    
+    def slice_multiple_files(self, file_paths, slice_size_k=50):
+        try:
+            all_lines = []
+            for file_path in file_paths:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    all_lines.extend(f.readlines())
+            
+            total_content = ''.join(all_lines)
+            total_tokens = len(self.tokenizer.encode(total_content))
+            slice_size = slice_size_k * 1000
+            slice_count = (total_tokens // slice_size) + 1
+            
+            lines_per_slice = len(all_lines) // slice_count
+            slices = []
+            for i in range(slice_count):
+                start_line = i * lines_per_slice
+                end_line = (i + 1) * lines_per_slice if i < slice_count - 1 else len(all_lines)
+                slice_content = ''.join(all_lines[start_line:end_line])
                 slices.append(slice_content)
             return slices
         except Exception as e:

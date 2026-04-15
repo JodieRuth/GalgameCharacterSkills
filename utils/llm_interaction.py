@@ -411,201 +411,6 @@ ALL output must be in {lang_name}, regardless of the source text language."""
         ]
 
         return self.send_message(messages, tools)
-        
-        system_prompt = f"""You are a professional skills folder generator.
-Your task is to create a complete skill folder for character roleplay based on the provided summaries.
-
-CHARACTER NAME: {role_name}
-
-Follow these skill design principles:
-- Keep SKILL.md concise and focused on how to use the roleplay skill
-- Put detailed character references into separate markdown files instead of overloading SKILL.md
-- Base every file on evidence from the summaries and reference data
-- Do not invent private, explicit, or unsupported details
-- Keep the output professional, public-safe, and reusable
-
-FOLDER STRUCTURE:
-Create exactly ONE folder: {role_name}-skill-main/
-
-REQUIRED FILES:
-
-1. SKILL.md
-- This is the entry point of the skill
-- It must contain ONLY YAML frontmatter with `name` and `description`
-- The description must clearly state what the skill does and when to use it
-- The body should be procedural and concise, telling the model to roleplay as the character directly
-- The body should explicitly reference the detailed files in `resource/` and explain what each file is for
-- Do not duplicate long reference material inside SKILL.md
-
-Expected structure:
-```markdown
----
-name: {role_name}-perspective
-description: Character roleplay skill for {role_name}. Use when the user wants responses in {role_name}'s voice, mindset, behavior style, and conversational patterns. The skill should answer directly in character, preserve the user's language, and rely on resource files for detailed personality, speech, relationship, and life-event references.
----
-
-# {role_name}
-
-## Roleplay Rules
-- Answer directly as {role_name}
-- Use first-person voice instead of third-person analysis unless the user explicitly asks for analysis
-- Match the user's language exactly
-- Stay in character unless the user explicitly asks to exit roleplay
-
-## Resource Map
-- Read `soul.md` for the inner drive, values, and emotional core
-- Read `resource/speech_patterns.md` for verbal style and phrasing habits
-- Read `resource/behavior_guide.md` for behavioral rules and situational responses
-- Read `resource/relationship_dynamics.md` for important relationship dynamics with other characters
-- Read `resource/key_life_events.md` for major experiences, turning points, and memory anchors
-- Read `limit.md` for boundaries and unsupported areas
-
-## Usage Notes
-- Prioritize consistent voice, worldview, and behavior over plot recitation
-- When facts are uncertain, stay within the strongest evidence from the summaries
-```
-
-2. soul.md
-- Summarize the character's inner core
-- Focus on motivation, values, fears, contradictions, attachments, and emotional center
-- Keep it interpretive but evidence-based
-
-Suggested sections:
-```markdown
-# Soul of {role_name}
-
-## Core Drive
-## Values and Beliefs
-## Emotional Core
-## Inner Contradictions
-## Growth Arc
-```
-
-3. limit.md
-- Define guardrails for the roleplay skill
-- Include unsupported topics, evidence limits, and tone boundaries
-- State that unsupported facts must not be invented
-
-Suggested sections:
-```markdown
-# Limitations
-
-## Scope Boundaries
-## Evidence Rules
-## Topic Restrictions
-## Roleplay Exit Conditions
-```
-
-4. resource/behavior_guide.md
-- Required
-- Describe repeatable behavior rules, habits, reactions, and situational defaults
-
-5. resource/speech_patterns.md
-- Required
-- Describe speech rhythm, wording, sentence habits, address patterns, tone shifts, and sample expression patterns
-
-6. resource/relationship_dynamics.md
-- Required
-- New reference file dedicated to important relationships with other characters
-- Include relationship type, emotional dynamic, behavior around that person, trust/conflict pattern, and why the relationship matters
-- Prefer structured sections per character or per relationship cluster
-
-7. resource/key_life_events.md
-- Required
-- New reference file dedicated to important life experiences and turning points
-- Include formative events, emotional impact, later behavioral influence, and what memories remain central to the persona
-- Organize chronologically when possible
-
-RESOURCE WRITING RULES:
-- Each reference file should focus on one domain only
-- Avoid repeating the same paragraphs across files
-- Prefer bullet lists and compact sections over long prose
-- Make the files useful as references for future roleplay, not as literary essays
-
-IMPORTANT INSTRUCTIONS:
-1. Use the write_file tool multiple times if needed
-2. Create all seven required files:
-   - {role_name}-skill-main/SKILL.md
-   - {role_name}-skill-main/soul.md
-   - {role_name}-skill-main/limit.md
-   - {role_name}-skill-main/resource/behavior_guide.md
-   - {role_name}-skill-main/resource/speech_patterns.md
-   - {role_name}-skill-main/resource/relationship_dynamics.md
-   - {role_name}-skill-main/resource/key_life_events.md
-3. Use valid markdown in every file
-4. Keep SKILL.md lean; move detail into resource files
-5. Focus on PUBLIC PERSONA, THINKING STYLE, SPEECH PATTERNS, RELATIONSHIPS, and IMPORTANT EXPERIENCES
-6. Base all content on the summaries and reference data only
-7. Do not create alternative versions or extra folders unless explicitly necessary
-
-Use the write_file tool to create all required files."""
-
-        if output_language:
-            lang_names = {"zh": "中文", "en": "English", "ja": "日本語"}
-            lang_name = lang_names.get(output_language, output_language)
-            system_prompt += f"""
-
-## OUTPUT LANGUAGE
-You MUST write ALL content in {lang_name}.
-- Character analysis: {lang_name}
-- All descriptions and summaries: {lang_name}
-ALL output must be in {lang_name}, regardless of the source text language."""
-
-        if vndb_data:
-            vndb_section = "\n\n## VNDB REFERENCE DATA (Use as authoritative source for basic info):\n"
-            if vndb_data.get('name'):
-                vndb_section += f"- Name: {vndb_data['name']}\n"
-            if vndb_data.get('original_name'):
-                vndb_section += f"- Original Name: {vndb_data['original_name']}\n"
-            if vndb_data.get('aliases'):
-                vndb_section += f"- Aliases: {', '.join(vndb_data['aliases'])}\n"
-            if vndb_data.get('description'):
-                vndb_section += f"- Description: {vndb_data['description']}\n"
-            if vndb_data.get('age'):
-                vndb_section += f"- Age: {vndb_data['age']}\n"
-            if vndb_data.get('birthday'):
-                vndb_section += f"- Birthday: {vndb_data['birthday']}\n"
-            if vndb_data.get('blood_type'):
-                vndb_section += f"- Blood Type: {vndb_data['blood_type']}\n"
-            if vndb_data.get('height'):
-                vndb_section += f"- Height: {vndb_data['height']}cm\n"
-            if vndb_data.get('weight'):
-                vndb_section += f"- Weight: {vndb_data['weight']}kg\n"
-            if vndb_data.get('bust') and vndb_data.get('waist') and vndb_data.get('hips'):
-                vndb_section += f"- Measurements: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm\n"
-            if vndb_data.get('hair'):
-                vndb_section += f"- Hair: {vndb_data['hair']}\n"
-            if vndb_data.get('eyes'):
-                vndb_section += f"- Eyes: {vndb_data['eyes']}\n"
-            if vndb_data.get('body'):
-                vndb_section += f"- Body Type: {vndb_data['body']}\n"
-            if vndb_data.get('clothes'):
-                vndb_section += f"- Clothes: {vndb_data['clothes']}\n"
-            if vndb_data.get('items'):
-                vndb_section += f"- Items: {vndb_data['items']}\n"
-            if vndb_data.get('role'):
-                vndb_section += f"- Role: {vndb_data['role']}\n"
-            if vndb_data.get('voiced_by'):
-                vndb_section += f"- Voiced by: {vndb_data['voiced_by']}\n"
-            if vndb_data.get('traits'):
-                vndb_section += f"- Traits: {', '.join(vndb_data['traits'])}\n"
-            if vndb_data.get('vns'):
-                games = vndb_data['vns'][:3]
-                vndb_section += f"- Visual Novels: {', '.join(games)}\n"
-            system_prompt += vndb_section
-        
-        messages = [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": f"Please analyze and summarize the following content, focusing EXCLUSIVELY on the character '{role_name}'. Save your summary to: {output_file_path}\n\nContent:\n{content}"
-            }
-        ]
-        
-        return self.send_message(messages, tools)
     
     def summarize_content_for_chara_card(self, content, role_name, instruction, output_file_path, output_language="", vndb_data=None):
         tools = [
@@ -873,214 +678,204 @@ Character names, location names, and other proper nouns can be translated or kep
         ]
         
         system_prompt = f"""You are a professional skills folder generator.
-Your task is to create a complete skills folder structure based on the character summaries provided.
+Your task is to create a complete skill folder for character roleplay based on the provided summaries.
 
 CHARACTER NAME: {role_name}
 
-CONTENT GUIDELINES:
-- Keep content APPROPRIATE and PROFESSIONAL
-- Focus on personality, speech patterns, and thinking style
-- AVOID excessive personal details, inappropriate content, or content that violates privacy
-- Keep descriptions GENERAL and SUITABLE FOR PUBLIC USE
-- DO NOT invent private or sensitive information not in the source material
+Follow these skill design principles:
+- Keep SKILL.md concise and focused on how to use the roleplay skill
+- Put detailed character references into separate markdown files instead of overloading SKILL.md
+- Base every file on evidence from the summaries and reference data
+- Do not invent private, explicit, or unsupported details
+- Keep the output professional, public-safe, and reusable
 
 FOLDER STRUCTURE:
-Create ONE main version (folder name: {role_name}-skill-main/):
+Create exactly ONE folder: {role_name}-skill-main/
 
 REQUIRED FILES:
 
-1. SKILL.md - Main skill definition with frontmatter (CRITICAL - This is the entry point):
+1. SKILL.md
+- This is the entry point of the skill
+- It must contain ONLY YAML frontmatter with `name` and `description`
+- The description must clearly state what the skill does and when to use it
+- The body should be procedural and concise, telling the model to roleplay as the character directly
+- The body should explicitly reference the detailed files in `resource/` and explain what each file is for
+- Do not duplicate long reference material inside SKILL.md
+
+Expected structure:
 ```markdown
 ---
 name: {role_name}-perspective
 description: |
   [Character]的思维框架与表达方式。
-  用途：[一句话描述用途]
+  用途：以[Character]的身份进行对话。
   激活方式：/{role_name}_chat [问题]
 ---
 
 # [Character]
 
-## 角色扮演规则
+## Roleplay Rules
 
-**此Skill激活后，直接以[Character]的身份回应。**
+**When this skill is activated, respond directly as [Character].**
 
-- 用「我」而非「[Character]会认为...」
-- 直接用角色的语气、表达方式回答问题
-- **⚠️ 第一优先级：必须使用用户的提问语言回答**
-- 不跳出角色做meta分析（除非用户明确要求）
+- Use "I" instead of "[Character] would think..."
+- Answer questions directly in the character's tone and expression style
+- **⚠️ TOP PRIORITY: Must use the same language as the user's question**
+- Do not break character for meta-analysis (unless explicitly requested)
 
-**语言规则（强制执行）**:
-1. 检测用户提问的语言
-2. 用完全相同的语言回答所有内容
-3. 禁止混入其他语言（包括原文引用）
-4. 如需引用原文，必须翻译为用户提问语言
+**Language Rules (Strictly Enforced)**:
+1. Detect the language of the user's question
+2. Respond entirely in that same language
+3. Do not mix in other languages (including original text quotes)
+4. If quoting original text, it must be translated to the user's language
 
-**退出角色**：用户说「退出」「切回正常」「不用扮演了」时恢复正常模式
+**Exit Roleplay**: Return to normal mode when user says "exit", "switch back", "stop roleplaying", etc.
 
-**默认激活方式**：`/{role_name}_chat [问题]`
-
----
-
-## 核心原则
-
-[描述角色的核心思维原则 - 基于文本中明确表现出的特点]
+**Default Activation**: `/{role_name}_chat [question]`
 
 ---
 
-## 人格框架
+## Core Principles
 
-[从提供的文本中提炼出角色的人格特征、行为模式、价值观等 - 保持适当和概括]
-
----
-
-## 语言规则（最高优先级）
-
-**⚠️ CRITICAL: 始终使用用户的提问语言进行回答。**
-
-- **检测用户提问的语言，必须用相同语言回应**
-- **禁止输出任何非用户提问语言的内容（包括原文引用）**
-- **如果原文是其他语言，必须翻译为用户提问语言**
-- **语言匹配优先于角色语气还原**
-
-### 示例
-- 用户用中文提问 → 必须用中文回答（所有内容，包括引用的台词）
-- 用户用英文提问 → 必须用英文回答
-- 用户用日文提问 → 必须用日文回答
+[Describe the character's core thinking principles based on evidence from the text]
 
 ---
 
-## 表达方式
+## Personality Framework
 
-[用用户提问语言描述角色的语言风格特点]
+[Extract the character's personality traits, behavior patterns, and values from the provided text - keep appropriate and general]
 
-### 语言风格特点
-- [描述语气特点，如：活泼、直接、热情]
-- [描述句式特点，如：多用感叹号、口语化]
+---
 
-### 标志性表达（用用户提问语言描述）
-- [描述角色的典型表达方式，不要放原文]
-- 例如：喜欢用充满活力的口号，而不是直接引用「この列車は...」
+## Language Rules (Highest Priority)
 
-### 称呼习惯
-- [描述角色如何称呼他人]
+**⚠️ CRITICAL: Always respond in the same language as the user's question.**
 
-### 情绪表达方式
-- [描述不同情绪下的语言特点]
+- **Detect the user's question language and respond in that language**
+- **Do not output any content in non-user languages (including original quotes)**
+- **If original text is in another language, translate it to the user's question language**
+- **Language matching takes priority over character tone authenticity**
+
+### Examples
+- User asks in Chinese → Must respond in Chinese (all content, including quoted lines)
+- User asks in English → Must respond in English
+- User asks in Japanese → Must respond in Japanese
+
+---
+
+## Expression Style
+
+[Describe the character's language style in the user's question language]
+
+### Speech Pattern Characteristics
+- [Describe tone traits, e.g.: lively, direct, enthusiastic]
+- [Describe sentence patterns, e.g.: frequent exclamation marks, colloquial]
+
+### Signature Expressions (describe in user's language)
+- [Describe the character's typical expressions without using original text]
+- Example: Likes to use energetic slogans instead of directly quoting "This train is..."
+
+### Addressing Habits
+- [Describe how the character addresses others]
+
+### Emotional Expression
+- [Describe language characteristics in different emotional states]
+
+---
+
+## Resource Map
+- Read `soul.md` for the inner drive, values, and emotional core
+- Read `resource/speech_patterns.md` for verbal style and phrasing habits
+- Read `resource/behavior_guide.md` for behavioral rules and situational responses
+- Read `resource/relationship_dynamics.md` for important relationship dynamics with other characters
+- Read `resource/key_life_events.md` for major experiences, turning points, and memory anchors
+- Read `limit.md` for boundaries and unsupported areas
+
+## Usage Notes
+- Prioritize consistent voice, worldview, and behavior over plot recitation
+- When facts are uncertain, stay within the strongest evidence from the summaries
 ```
 
-2. soul.md - 角色的灵魂/核心定义（可选但推荐）：
+2. soul.md
+- Summarize the character's inner core
+- Focus on motivation, values, fears, contradictions, attachments, and emotional center
+- Keep it interpretive but evidence-based
+
+Suggested sections:
 ```markdown
 # Soul of {role_name}
 
-## 核心驱动力
-[角色行为背后的核心动机 - 基于文本证据]
-
-## 价值观
-[角色重视什么 - 基于文本中的言行]
-
-## 行为模式
-[角色如何与他人互动 - 基于文本中的表现]
+## Core Drive
+## Values and Beliefs
+## Emotional Core
+## Inner Contradictions
+## Growth Arc
 ```
 
-3. limit.md - 限制和边界（会被移除生成-code版本）：
+3. limit.md
+- Define guardrails for the roleplay skill
+- Include unsupported topics, evidence limits, and tone boundaries
+- State that unsupported facts must not be invented
+
+Suggested sections:
 ```markdown
 # Limitations
 
-## 内容限制
-- 保持回答在适当范围内
-- 不讨论过于私人的话题
-- 基于提供的文本，不编造未提及的内容
-
-## 禁止话题
-- [根据角色特点设定]
+## Scope Boundaries
+## Evidence Rules
+## Topic Restrictions
+## Roleplay Exit Conditions
 ```
 
-4. 其他文件 - 放在 resource/ 文件夹下（可选）：
-- 仅当有必要时创建额外文件
-- 保持内容简洁和专业
-
-IMPORTANT INSTRUCTIONS:
-1. You can use the write_file tool MULTIPLE TIMES in a single response
-2. Create SKILL.md (required), soul.md (recommended), limit.md (required)
-3. Put any additional files in the resource/ folder
-4. Use proper markdown formatting
-5. Ensure file paths are correct: {role_name}-skill-main/filename.md or {role_name}-skill-main/resource/filename.md
-6. Focus on SPEECH PATTERNS, THINKING STYLE, and GENERAL PERSONALITY TRAITS
-7. KEEP CONTENT APPROPRIATE AND PROFESSIONAL - avoid excessive personal details
-8. BASE ALL CONTENT on the provided summaries - do not invent private information
-9. The SKILL.md should enable role-playing of the character's PUBLIC PERSONA
-
-Use the write_file tool to create all necessary files. You may call it multiple times."""
-
-        system_prompt = f"""You are a professional skills folder generator.
-Your task is to create a complete skill folder for character roleplay based on compacted character summaries and reference data.
-
-CHARACTER NAME: {role_name}
-
-CONTENT GUIDELINES:
-- Keep content appropriate, professional, and reusable
-- Focus on personality, speech patterns, thinking style, relationship dynamics, and important life events
-- Do not invent unsupported or overly private details
-- Treat the provided summaries as compact evidence, not complete raw source text
-
-FOLDER STRUCTURE:
-Create exactly one folder: {role_name}-skill-main/
-
-REQUIRED FILES:
-1. SKILL.md
-2. soul.md
-3. limit.md
 4. resource/behavior_guide.md
+- Required
+- Describe repeatable behavior rules, habits, reactions, and situational defaults
+
 5. resource/speech_patterns.md
+- Required
+- Describe speech rhythm, wording, sentence habits, address patterns, tone shifts, and sample expression patterns
+
 6. resource/relationship_dynamics.md
+- Required
+- New reference file dedicated to important relationships with other characters
+- Include relationship type, emotional dynamic, behavior around that person, trust/conflict pattern, and why the relationship matters
+- Prefer structured sections per character or per relationship cluster
+
 7. resource/key_life_events.md
+- Required
+- New reference file dedicated to important life experiences and turning points
+- Include formative events, emotional impact, later behavioral influence, and what memories remain central to the persona
+- Organize chronologically when possible
 
-SKILL.md REQUIREMENTS:
-- Use only `name` and `description` in YAML frontmatter
-- Keep `description` short: 1 to 2 sentences only
-- Limit `description` to a compact trigger summary: what the skill does and when to use it
-- Do NOT put detailed resource relationships, read order, or file ownership rules into `description`
-- Move detailed trigger guidance, resource dependencies, read order, and usage rules into the markdown body
-- In the markdown body, explicitly define how SKILL.md depends on the other markdown files
-- Explain the relationship among the resource files, including which file owns which kind of information
-- State a clear read order or priority order for those files
-- In the markdown body, add a dedicated section such as `## Resource Map` or `## Resource Dependencies`
-- Make it clear that:
-  - `soul.md` owns inner motives, values, contradictions, and emotional core
-  - `resource/speech_patterns.md` owns phrasing, rhythm, vocabulary, and address habits
-  - `resource/behavior_guide.md` owns default reactions, habits, and situational behavior rules
-  - `resource/relationship_dynamics.md` owns how the character relates to specific people or groups
-  - `resource/key_life_events.md` owns formative experiences, turning points, and memory anchors
-  - `limit.md` defines boundaries, unsupported facts, and exit conditions
-- Keep SKILL.md lean and procedural; do not duplicate long reference content there
-- Example short description style:
-  - `Character roleplay skill for {role_name}. Use when the user wants replies in {role_name}'s voice and mindset.`
-
-RESOURCE FILE REQUIREMENTS:
-- `soul.md`: inner drive, beliefs, contradictions, emotional center, growth arc
-- `resource/speech_patterns.md`: speaking style, cadence, wording preferences, tone shifts, example phrasing patterns
-- `resource/behavior_guide.md`: habits, reactions, if-then behavior rules, social defaults, conflict/stress responses
-- `resource/relationship_dynamics.md`: relationship type, emotional tone, behavior toward others, trust/conflict pattern, why the relationship matters
-- `resource/key_life_events.md`: timeline anchors, formative experiences, emotional impact, long-term influence on current persona
-- `limit.md`: scope boundaries, evidence rules, restricted topics, roleplay exit conditions
+RESOURCE WRITING RULES:
+- Each reference file should focus on one domain only
+- Avoid repeating the same paragraphs across files
+- Prefer bullet lists and compact sections over long prose
+- Make the files useful as references for future roleplay, not as literary essays
 
 IMPORTANT INSTRUCTIONS:
 1. Use the write_file tool multiple times if needed
-2. Create all seven required files
+2. Create all seven required files:
+   - {role_name}-skill-main/SKILL.md
+   - {role_name}-skill-main/soul.md
+   - {role_name}-skill-main/limit.md
+   - {role_name}-skill-main/resource/behavior_guide.md
+   - {role_name}-skill-main/resource/speech_patterns.md
+   - {role_name}-skill-main/resource/relationship_dynamics.md
+   - {role_name}-skill-main/resource/key_life_events.md
 3. Use valid markdown in every file
-4. Base all content on the provided summaries and reference data only
-5. Do not create extra folders or alternative variants
-6. Ensure SKILL.md explicitly tells future readers how to use and combine all referenced markdown resources
+4. Keep SKILL.md lean; move detail into resource files
+5. Focus on PUBLIC PERSONA, THINKING STYLE, SPEECH PATTERNS, RELATIONSHIPS, and IMPORTANT EXPERIENCES
+6. Base all content on the summaries and reference data only
+7. Do not create alternative versions or extra folders unless explicitly necessary
 
-## LANGUAGE REQUIREMENT
-By default, you MUST use the same language as the provided summaries and source material.
-- If the summaries are in Chinese, write all generated markdown in Chinese
-- If the summaries are in Japanese, write all generated markdown in Japanese
-- If the summaries are in English, write all generated markdown in English
-- Keep the language consistent across SKILL.md, soul.md, limit.md, and all resource markdown files
-- Do not mix languages unless the source material itself clearly does so
-- Preserve original-language character voice, terminology, and quoted phrasing style whenever possible
+OPTIONAL ADDITIONAL FILES:
+After creating the seven required files, you MAY create additional files in the resource/ folder if you believe they would enhance the roleplay experience. For example:
+- Additional character relationship files
+- Setting/world-building details
+- Specific scenario guides
+- Character development notes
+- Any other supplementary material that would be valuable
 
 Use the write_file tool to create all required files."""
 
@@ -1148,6 +943,127 @@ ALL output must be in {lang_name}, regardless of the source text language."""
                 "role": "user",
                 "content": f"Please generate a complete skill folder for character '{role_name}' based on the following compacted summaries:\n{summaries}\n\nCreate the single required folder structure exactly as specified. In SKILL.md, explicitly define the dependency and reading relationship between SKILL.md and the other markdown resources, including which file owns which type of information. You can call the write_file tool multiple times. After creating all required files, indicate completion."
             }
+        ]
+        
+        return messages, tools
+
+    def compress_content_with_llm(self, group_files_content, group_info):
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "remove_duplicate_sections",
+                    "description": "Remove duplicate sections from files by specifying the exact filename and content to remove. The tool will find and remove the first occurrence of the specified content in the corresponding file.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file_sections": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "filename": {
+                                            "type": "string",
+                                            "description": "The filename where the duplicate content is located (e.g., 'summary_001.md')"
+                                        },
+                                        "content": {
+                                            "type": "string",
+                                            "description": "The exact duplicate content section to be removed. Must match the content in the file exactly."
+                                        }
+                                    },
+                                    "required": ["filename", "content"]
+                                },
+                                "description": "List of duplicate sections to remove, each containing filename and the exact content to remove"
+                            }
+                        },
+                        "required": ["file_sections"]
+                    }
+                }
+            }
+        ]
+        
+        system_prompt = """You are an aggressive text deduplication assistant. Your task is to analyze multiple summary files and identify ALL duplicate content for maximum compression.
+
+## Guidelines:
+1. Analyze content across ALL files in the group thoroughly
+2. Identify ANY sections that contain the same information, even if phrased slightly differently
+3. Mark ALL duplicate sections for removal from later files
+4. Focus on: character descriptions, events, relationships, personality traits, speech patterns
+5. If the same information appears in multiple files, it IS a duplicate
+
+## How to use the tool:
+1. Read through all files in the group
+2. Identify ALL duplicate sections (same information appearing in multiple files)
+3. For each duplicate:
+   - Keep the first occurrence (in the earliest file)
+   - Mark ALL subsequent occurrences for removal
+4. Call remove_duplicate_sections with a list of {filename, content} objects
+   - filename: the file where the duplicate appears
+   - content: the exact duplicate text to remove
+
+## Important:
+- The "content" field must match EXACTLY what's in the file (character for character)
+- Remove ALL duplicates aggressively - we want maximum compression
+- If information appears in File 1 and File 2, remove it from File 2
+- If information appears in File 1, File 3, and File 5, remove it from File 3 and File 5
+- JSON and Markdown files are handled the same way - match exact text
+- BE AGGRESSIVE - mark every duplicate you find
+- FORMAT DOES NOT MATTER - removing content may break file structure, that's OK
+- The remaining content will be reprocessed later, so only semantic uniqueness matters"""
+
+        files_display = []
+        for idx, (filename, content) in enumerate(group_files_content.items()):
+            files_display.append(f"\n{'='*60}\nFILE {idx + 1}: {filename}\n{'='*60}\n{content}")
+        
+        all_content = "\n".join(files_display)
+        
+        user_prompt = f"""Please analyze the following {len(group_files_content)} files and identify ALL duplicate sections for aggressive compression.
+
+## Group Information:
+- This is group {group_info['group_index'] + 1} of {group_info['total_groups']}
+- Total files in this group: {group_info['file_count']}
+- Files are shown in order (File 1 is the earliest, File N is the latest)
+
+## Files to Analyze:
+{all_content}
+
+## Instructions:
+1. Compare content across ALL files thoroughly
+2. Identify EVERY section that appears in multiple files (even partially)
+3. For each duplicate section:
+   - Keep it ONLY in the earliest file where it appears
+   - Mark it for removal in ALL later files
+4. **BATCH REMOVAL**: You can remove duplicates in multiple rounds. You DON'T need to find all duplicates in one call.
+   - In each round, mark some duplicates for removal
+   - After processing, you will see the updated files
+   - Continue with another round if there are still duplicates
+   - This allows for more thorough compression
+5. Use the remove_duplicate_sections tool with format:
+   {{
+     "file_sections": [
+       {{"filename": "file2.md", "content": "exact duplicate text from file2"}},
+       {{"filename": "file3.md", "content": "exact duplicate text from file3"}},
+       {{"filename": "file4.md", "content": "exact duplicate text from file4"}}
+     ]
+   }}
+
+## Important Notes:
+- The "content" must match EXACTLY (character for character)
+- Remove ALL duplicates - be AGGRESSIVE
+- If content appears in File 1 and File 2, REMOVE from File 2
+- If content appears in 5 files, keep only in File 1, remove from Files 2-5
+- Look for: character descriptions, events, personality traits, relationships
+- MAXIMUM compression is the goal - mark every duplicate you find
+- **FORMAT IS NOT IMPORTANT** - It's OK if removing content breaks JSON structure or Markdown formatting
+- **SEMANTIC UNIQUENESS ONLY** - The remaining content will be reprocessed later, so only keep unique information
+- Don't worry about leaving valid JSON or complete sentences - just remove duplicates
+- **STOP CONDITION**: If you have removed all duplicate content and there are no more duplicates to remove, DO NOT call the tool. Simply respond with a message indicating completion.
+
+Be thorough and aggressive in identifying duplicates."""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
         ]
         
         return messages, tools
