@@ -1006,7 +1006,7 @@ Be thorough and aggressive in identifying duplicates."""
         
         return messages, tools
 
-    def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language=""):
+    def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language="", checkpoint_id=None, ckpt_messages=None, ckpt_fields_data=None, ckpt_iteration_count=None):
         from utils.tool_handler import ToolHandler
         
         integrated_analysis = self._integrate_analyses(role_name, all_analyses, vndb_data)
@@ -1108,6 +1108,14 @@ Be thorough and aggressive in identifying duplicates."""
             "tags": ["character", base_name.lower().replace(" ", "_")],
             "character_book_entries": lorebook_entries
         }
+
+        is_resuming = ckpt_messages is not None and len(ckpt_messages) > 0
+        if is_resuming and ckpt_fields_data:
+            for key in fields_data:
+                if key in ckpt_fields_data and ckpt_fields_data[key]:
+                    if key == "character_book_entries":
+                        continue
+                    fields_data[key] = ckpt_fields_data[key]
         
         language_instruction = ""
         if output_language:
@@ -1191,19 +1199,44 @@ NOTE: Do NOT write creatorcomment, creator_notes, or world_name fields. These wi
 
 Call write_field for each field. Set is_complete=true on the last call."""
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Generate the complete character card for '{role_name}'. Use the write_field tool to write each field. Start with the most important fields (name, description, system_prompt, first_mes)."}
-        ]
+        if is_resuming:
+            messages = ckpt_messages
+            tool_call_count = ckpt_iteration_count or 0
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Generate the complete character card for '{role_name}'. Use the write_field tool to write each field. Start with the most important fields (name, description, system_prompt, first_mes)."}
+            ]
+            tool_call_count = 0
         
         max_tool_calls = 50 
-        tool_call_count = 0
         
         while tool_call_count < max_tool_calls:
+            if checkpoint_id:
+                from utils.checkpoint_manager import CheckpointManager
+                mgr = CheckpointManager()
+                mgr.save_llm_state(
+                    checkpoint_id, messages=messages,
+                    iteration_count=tool_call_count,
+                    fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
+                )
+
             response = self.send_message(messages, tools=tools, use_counter=False)
             
             if not response or not response.choices:
-                break
+                if checkpoint_id:
+                    from utils.checkpoint_manager import CheckpointManager
+                    mgr = CheckpointManager()
+                    mgr.save_llm_state(
+                        checkpoint_id, messages=messages,
+                        last_response=None, iteration_count=tool_call_count,
+                        fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
+                    )
+                return {
+                    'success': False,
+                    'message': 'LLM交互失败',
+                    'can_resume': True
+                }
             
             message = response.choices[0].message
             
@@ -1258,6 +1291,15 @@ Call write_field for each field. Set is_complete=true on the last call."""
                     pass
                 
                 break
+
+            if checkpoint_id:
+                from utils.checkpoint_manager import CheckpointManager
+                mgr = CheckpointManager()
+                mgr.save_llm_state(
+                    checkpoint_id, messages=messages,
+                    last_response=response, iteration_count=tool_call_count,
+                    fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
+                )
         
         template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils', 'chara_card_template.json')
         

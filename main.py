@@ -17,6 +17,7 @@ import litellm
 from utils.llm_interaction import LLMInteraction
 from utils.file_processor import FileProcessor
 from utils.tool_handler import ToolHandler
+from utils.checkpoint_manager import CheckpointManager
 
 _tokenizer = tiktoken.get_encoding("cl100k_base")
 
@@ -25,13 +26,18 @@ def get_model_context_limit(model_name):
     if not model_name:
         return 115000
     
-    try:
-        model_info = litellm.get_model_info(model_name)
-        max_tokens = model_info.get("max_input_tokens", model_info.get("max_tokens", 115000))
-        if max_tokens and max_tokens > 0:
-            return max_tokens
-    except Exception as e:
-        return 115000
+    name_lower = model_name.lower().strip()
+    
+    for attempt_name in [model_name, name_lower]:
+        try:
+            model_info = litellm.get_model_info(attempt_name)
+            max_tokens = model_info.get("max_input_tokens", model_info.get("max_tokens", None))
+            if max_tokens and max_tokens > 0:
+                return max_tokens
+        except Exception as e:
+            continue
+
+    return 115000
 
 
 def calculate_compression_threshold(context_limit):
@@ -78,6 +84,7 @@ app = Flask(__name__, template_folder=get_resource_path('utils'))
 CORS(app)
 
 file_processor = FileProcessor()
+ckpt_manager = CheckpointManager()
 current_slices = []
 summaries = []
 
@@ -293,7 +300,7 @@ def _estimate_tokens_from_text(text):
         return max(1, len(text) // 2)
 
 
-def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000):
+def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000, checkpoint_id=None):
     print(f"Starting LLM-based compression for {len(summary_files)} files")
     
     total_tokens = 0
@@ -320,10 +327,17 @@ def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000):
     
     import tempfile
     import shutil
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    temp_base_dir = os.path.join(project_root, 'temp')
-    os.makedirs(temp_base_dir, exist_ok=True)
-    temp_dir = tempfile.mkdtemp(prefix='llm_compression_', dir=temp_base_dir)
+    if checkpoint_id:
+        ckpt_temp_dir = ckpt_manager.get_temp_dir(checkpoint_id)
+        temp_dir = os.path.join(ckpt_temp_dir, 'llm_compression')
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        os.makedirs(temp_dir, exist_ok=True)
+    else:
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        temp_base_dir = os.path.join(project_root, 'temp')
+        os.makedirs(temp_base_dir, exist_ok=True)
+        temp_dir = tempfile.mkdtemp(prefix='llm_compression_', dir=temp_base_dir)
     temp_file_map = {}  
     
     for basename, original_path in file_path_map.items():
@@ -498,7 +512,7 @@ def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000):
     return final_content
 
 
-def _compress_analyses_with_llm(analyses, llm_client, target_budget_tokens=115000):
+def _compress_analyses_with_llm(analyses, llm_client, target_budget_tokens=115000, checkpoint_id=None):
     print(f"Starting compression for {len(analyses)} analyses")
     
     total_tokens = 0
@@ -524,10 +538,17 @@ def _compress_analyses_with_llm(analyses, llm_client, target_budget_tokens=11500
     
     import tempfile
     import shutil
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    temp_base_dir = os.path.join(project_root, 'temp')
-    os.makedirs(temp_base_dir, exist_ok=True)
-    temp_dir = tempfile.mkdtemp(prefix='analyses_compression_', dir=temp_base_dir)
+    if checkpoint_id:
+        ckpt_temp_dir = ckpt_manager.get_temp_dir(checkpoint_id)
+        temp_dir = os.path.join(ckpt_temp_dir, 'analyses_compression')
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        os.makedirs(temp_dir, exist_ok=True)
+    else:
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        temp_base_dir = os.path.join(project_root, 'temp')
+        os.makedirs(temp_base_dir, exist_ok=True)
+        temp_dir = tempfile.mkdtemp(prefix='analyses_compression_', dir=temp_base_dir)
     temp_file_map = {}
     
     for key, content in analysis_contents.items():
@@ -808,6 +829,15 @@ def calculate_tokens():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
+
+@app.route('/api/context-limit', methods=['POST'])
+def get_context_limit():
+    data = request.json
+    model_name = data.get('model_name', '')
+    limit = get_model_context_limit(model_name)
+    return jsonify({'success': True, 'context_limit': limit})
+
+
 @app.route('/api/slice', methods=['POST'])
 def slice_file():
     data = request.json
@@ -839,10 +869,41 @@ def slice_file():
         })
 
 def process_single_slice(args):
-    slice_index, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data = args
+    slice_index, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id = args
     llm_client = LLMInteraction()
     if config.get('baseurl') or config.get('modelname') or config.get('apikey'):
         llm_client.set_config(config.get('baseurl'), config.get('modelname'), config.get('apikey'))
+
+    if checkpoint_id:
+        existing = ckpt_manager.get_slice_result(checkpoint_id, slice_index)
+        if existing:
+            print(f"Slice {slice_index} already completed, skipping")
+            result = {
+                'index': slice_index,
+                'success': True,
+                'summary': f"Slice {slice_index + 1} restored from checkpoint",
+                'tool_results': [],
+                'output_path': output_file_path,
+                'character_analysis': None,
+                'lorebook_entries': [],
+                'restored': True
+            }
+            if mode == 'chara_card':
+                try:
+                    with open(output_file_path, 'r', encoding='utf-8') as f:
+                        parsed = json.load(f)
+                    result['character_analysis'] = parsed.get('character_analysis', {})
+                    result['lorebook_entries'] = parsed.get('lorebook_entries', [])
+                except Exception:
+                    pass
+            else:
+                try:
+                    with open(output_file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    result['summary'] = content[:200] + "..." if len(content) > 200 else content
+                except Exception:
+                    pass
+            return result
 
     time.sleep(0.5 * slice_index)
     
@@ -858,7 +919,8 @@ def process_single_slice(args):
         'tool_results': [],
         'output_path': output_file_path,
         'character_analysis': None,
-        'lorebook_entries': []
+        'lorebook_entries': [],
+        'restored': False
     }
     
     if response and hasattr(response, 'choices') and response.choices:
@@ -900,18 +962,48 @@ def process_single_slice(args):
             else:
                 result['success'] = True
                 result['summary'] = choice.message.content
+
+    if result['success'] and checkpoint_id:
+        try:
+            if mode == 'chara_card':
+                with open(output_file_path, 'r', encoding='utf-8') as f:
+                    ckpt_content = f.read()
+            else:
+                if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+                    for tool_call in choice.message.tool_calls:
+                        if hasattr(tool_call, 'function') and tool_call.function.name == 'write_file':
+                            args_dict = json.loads(tool_call.function.arguments)
+                            ckpt_content = args_dict.get('content', '')
+                            break
+                    else:
+                        ckpt_content = result['summary'] or ''
+                else:
+                    ckpt_content = result['summary'] or ''
+            ckpt_manager.save_slice_result(checkpoint_id, slice_index, ckpt_content, 'completed')
+            prog = ckpt_manager.load_checkpoint(checkpoint_id)
+            if prog:
+                completed = prog['progress']['completed_items']
+                if slice_index not in completed:
+                    completed.append(slice_index)
+                pending = [i for i in prog['progress']['pending_items'] if i != slice_index]
+                ckpt_manager.update_progress(checkpoint_id, completed_items=completed, pending_items=pending)
+        except Exception as e:
+            print(f"Failed to save slice {slice_index} result: {e}")
     
     return result
 
 
 @app.route('/api/summarize', methods=['POST'])
 def summarize():
+    return _do_summarize(request.json)
+
+def _do_summarize(data):
     global current_slices, summaries
-    data = request.json
     role_name = data.get('role_name', '')
     instruction = data.get('instruction', '')
     concurrency = data.get('concurrency', 1)
     mode = data.get('mode', 'skills')
+    resume_checkpoint_id = data.get('resume_checkpoint_id')
     
     file_paths = data.get('file_paths', [])
     if not file_paths:
@@ -921,11 +1013,57 @@ def summarize():
     
     if not role_name:
         return jsonify({'success': False, 'message': '请输入角色名称'})
+
+    config = {
+        'baseurl': data.get('baseurl', ''),
+        'modelname': data.get('modelname', ''),
+        'apikey': data.get('apikey', '')
+    }
+    output_language = data.get('output_language', '')
+    vndb_data = clean_vndb_data(data.get('vndb_data'))
+    slice_size_k = data.get('slice_size_k', 50)
+
+    if resume_checkpoint_id:
+        ckpt = ckpt_manager.load_checkpoint(resume_checkpoint_id)
+        if not ckpt:
+            return jsonify({'success': False, 'message': f'未找到Checkpoint: {resume_checkpoint_id}'})
+        if ckpt['status'] == 'completed':
+            return jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+        
+        role_name = ckpt['input_params'].get('role_name', role_name)
+        instruction = ckpt['input_params'].get('instruction', instruction)
+        output_language = ckpt['input_params'].get('output_language', output_language)
+        mode = ckpt['input_params'].get('mode', mode)
+        vndb_data = ckpt['input_params'].get('vndb_data', vndb_data)
+        slice_size_k = ckpt['input_params'].get('slice_size_k', slice_size_k)
+        file_paths = ckpt['input_params'].get('file_paths', file_paths)
+        concurrency = ckpt['input_params'].get('concurrency', concurrency)
+        checkpoint_id = resume_checkpoint_id
+        
+        completed_indices = set(ckpt['progress'].get('completed_items', []))
+        print(f"Resuming summarize: {len(completed_indices)}/{ckpt['progress'].get('total_steps', '?')} slices already done")
+    else:
+        if not file_paths:
+            return jsonify({'success': False, 'message': '请先选择文件'})
+        
+        checkpoint_id = ckpt_manager.create_checkpoint(
+            task_type='summarize',
+            input_params={
+                'role_name': role_name,
+                'instruction': instruction,
+                'output_language': output_language,
+                'mode': mode,
+                'vndb_data': vndb_data,
+                'slice_size_k': slice_size_k,
+                'file_paths': file_paths,
+                'concurrency': concurrency
+            }
+        )
+
     if not file_paths:
         return jsonify({'success': False, 'message': '请先选择文件'})
     
     llm_interaction = get_llm_client()
-    slice_size_k = data.get('slice_size_k', 50)
     current_slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
     LLMInteraction.set_total_requests(len(current_slices))
     
@@ -945,15 +1083,13 @@ def summarize():
         name = os.path.splitext(name)[0]
         summary_dir = os.path.join(first_dir, f"{name}_merged_summaries")
     os.makedirs(summary_dir, exist_ok=True)
-    
-    config = {
-        'baseurl': data.get('baseurl', ''),
-        'modelname': data.get('modelname', ''),
-        'apikey': data.get('apikey', '')
-    }
 
-    output_language = data.get('output_language', '')
-    vndb_data = clean_vndb_data(data.get('vndb_data'))
+    if not resume_checkpoint_id:
+        ckpt_manager.update_progress(
+            checkpoint_id,
+            total_steps=len(current_slices),
+            pending_items=list(range(len(current_slices)))
+        )
 
     tasks = []
     for i, slice_content in enumerate(current_slices):
@@ -961,7 +1097,7 @@ def summarize():
             output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{role_name}.json")
         else:
             output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{role_name}.md")
-        tasks.append((i, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data))
+        tasks.append((i, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id))
     
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         future_to_task = {executor.submit(process_single_slice, task): task for task in tasks}
@@ -989,26 +1125,44 @@ def summarize():
                 'character_analyses': all_character_analyses,
                 'lorebook_entries': all_lorebook_entries
             }, f, ensure_ascii=False, indent=2)
-    
-    if errors:
+
+    if errors and len(summaries) == 0:
+        ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片全部失败')
         return jsonify({
-            'success': len(summaries) > 0,
+            'success': False,
+            'message': f'归纳失败，{len(errors)} 个切片失败',
+            'slice_count': len(current_slices),
+            'errors': errors,
+            'results': all_results,
+            'checkpoint_id': checkpoint_id,
+            'can_resume': True
+        })
+
+    if errors:
+        ckpt_manager.mark_completed(checkpoint_id)
+        return jsonify({
+            'success': True,
             'message': f'归纳完成，{len(errors)} 个切片失败',
             'slice_count': len(current_slices),
             'errors': errors,
-            'results': all_results
+            'results': all_results,
+            'checkpoint_id': checkpoint_id
         })
     
+    ckpt_manager.mark_completed(checkpoint_id)
     return jsonify({
         'success': True,
         'message': '归纳完成',
         'slice_count': len(current_slices),
-        'results': all_results
+        'results': all_results,
+        'checkpoint_id': checkpoint_id
     })
 
 @app.route('/api/skills', methods=['POST'])
 def generate_skills():
-    data = request.json
+    return _do_generate_skills(request.json)
+
+def _do_generate_skills(data):
     role_name = data.get('role_name', '')
     mode = data.get('mode', 'skills')
     
@@ -1026,6 +1180,43 @@ def generate_skills_folder(data):
     output_language = data.get('output_language', '')
     compression_mode = data.get('compression_mode', 'original')
     force_no_compression = data.get('force_no_compression', False)
+    resume_checkpoint_id = data.get('resume_checkpoint_id')
+
+    if resume_checkpoint_id:
+        ckpt = ckpt_manager.load_checkpoint(resume_checkpoint_id)
+        if not ckpt:
+            return jsonify({'success': False, 'message': f'未找到Checkpoint: {resume_checkpoint_id}'})
+        if ckpt['status'] == 'completed':
+            return jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+        
+        role_name = ckpt['input_params'].get('role_name', role_name)
+        vndb_data = ckpt['input_params'].get('vndb_data', vndb_data)
+        output_language = ckpt['input_params'].get('output_language', output_language)
+        compression_mode = ckpt['input_params'].get('compression_mode', compression_mode)
+        force_no_compression = ckpt['input_params'].get('force_no_compression', force_no_compression)
+        checkpoint_id = resume_checkpoint_id
+        
+        llm_state = ckpt_manager.load_llm_state(checkpoint_id)
+        messages = llm_state.get('messages', [])
+        all_results = llm_state.get('all_results', [])
+        iteration = llm_state.get('iteration_count', 0)
+        tools = None
+        
+        print(f"Resuming generate_skills: iteration {iteration}, {len(all_results)} results so far")
+    else:
+        checkpoint_id = ckpt_manager.create_checkpoint(
+            task_type='generate_skills',
+            input_params={
+                'role_name': role_name,
+                'vndb_data': vndb_data,
+                'output_language': output_language,
+                'compression_mode': compression_mode,
+                'force_no_compression': force_no_compression
+            }
+        )
+        messages = []
+        all_results = []
+        iteration = 0
     
     script_dir = get_base_dir()
     summary_files = []
@@ -1054,7 +1245,7 @@ def generate_skills_folder(data):
         if compression_mode == 'llm':
             print(f"Using LLM compression")
             llm_interaction = get_llm_client()
-            summaries_text = _compress_with_llm(summary_files, llm_interaction, target_budget_tokens)
+            summaries_text = _compress_with_llm(summary_files, llm_interaction, target_budget_tokens, checkpoint_id=checkpoint_id)
             context_mode = "llm_compressed"
         else:
             print(f"Using original compression")
@@ -1085,22 +1276,38 @@ def generate_skills_folder(data):
     }.get(context_mode, 'unknown')
     
     print(
-        f"[SkillGen] role={role_name} files={len(summary_files)} mode={context_mode} "
+        f"role={role_name} files={len(summary_files)} mode={context_mode} "
         f"raw_chars={raw_total_chars} raw_estimated_tokens={raw_estimated_tokens} "
         f"final_chars={compressed_chars} final_estimated_tokens={estimated_tokens} "
         f"compression_ratio={compression_ratio:.2%} "
         f"strategy={strategy_name}"
     )
     llm_interaction = get_llm_client()
-    messages, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
-    all_results = []
+    
+    if not resume_checkpoint_id:
+        messages, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
+        ckpt_manager.update_progress(checkpoint_id, total_steps=20, current_phase='tool_call_loop')
+    else:
+        _, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
+
     max_iterations = 20
-    iteration = 0
     while iteration < max_iterations:
         iteration += 1
+        ckpt_manager.save_llm_state(
+            checkpoint_id, messages=messages,
+            iteration_count=iteration, all_results=all_results
+        )
         response = llm_interaction.send_message(messages, tools, use_counter=False)
         if not response:
-            return jsonify({'success': False, 'message': 'LLM交互失败'})
+            ckpt_manager.save_llm_state(
+                checkpoint_id, messages=messages,
+                last_response=None, iteration_count=iteration, all_results=all_results
+            )
+            ckpt_manager.mark_failed(checkpoint_id, 'LLM交互失败')
+            return jsonify({
+                'success': False, 'message': 'LLM交互失败',
+                'checkpoint_id': checkpoint_id, 'can_resume': True
+            })
         tool_calls = llm_interaction.get_tool_response(response)
         if not tool_calls:
             break
@@ -1120,13 +1327,16 @@ def generate_skills_folder(data):
         for tool_call in tool_calls:
             result = ToolHandler.handle_tool_call(tool_call)
             all_results.append(result)
-            import json
             tool_response = {
                 "role": "tool",
                 "tool_call_id": tool_call.id if hasattr(tool_call, 'id') else tool_call.get('id'),
                 "content": json.dumps({"success": True, "result": result})
             }
             messages.append(tool_response)
+        ckpt_manager.save_llm_state(
+            checkpoint_id, messages=messages,
+            last_response=response, iteration_count=iteration, all_results=all_results
+        )
     try:
         script_dir = get_base_dir()
         main_skill_dir = os.path.join(script_dir, f"{role_name}-skill-main")
@@ -1187,10 +1397,12 @@ def generate_skills_folder(data):
             all_results.append(f"Created {role_name}-skill-code (without limit.md)")
     except Exception as e:
         all_results.append(f"Warning: Failed to create -code version: {e}")
+    ckpt_manager.mark_completed(checkpoint_id)
     return jsonify({
         'success': True,
         'message': f'技能文件夹生成完成，共执行 {len(all_results)} 次文件写入',
-        'results': all_results
+        'results': all_results,
+        'checkpoint_id': checkpoint_id
     })
 
 def download_vndb_image(image_url, output_path):
@@ -1282,6 +1494,46 @@ def generate_character_card(data):
     output_language = data.get('output_language', '')
     compression_mode = data.get('compression_mode', 'original')
     force_no_compression = data.get('force_no_compression', False)
+    resume_checkpoint_id = data.get('resume_checkpoint_id')
+
+    if resume_checkpoint_id:
+        ckpt = ckpt_manager.load_checkpoint(resume_checkpoint_id)
+        if not ckpt:
+            return jsonify({'success': False, 'message': f'未找到Checkpoint: {resume_checkpoint_id}'})
+        if ckpt['status'] == 'completed':
+            return jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+        
+        role_name = ckpt['input_params'].get('role_name', role_name)
+        creator = ckpt['input_params'].get('creator', creator)
+        vndb_data = ckpt['input_params'].get('vndb_data', vndb_data)
+        vndb_data_raw = ckpt['input_params'].get('vndb_data_raw', vndb_data_raw)
+        output_language = ckpt['input_params'].get('output_language', output_language)
+        compression_mode = ckpt['input_params'].get('compression_mode', compression_mode)
+        force_no_compression = ckpt['input_params'].get('force_no_compression', force_no_compression)
+        checkpoint_id = resume_checkpoint_id
+        
+        llm_state = ckpt_manager.load_llm_state(checkpoint_id)
+        fields_data = llm_state.get('fields_data', {})
+        messages = llm_state.get('messages', [])
+        iteration_count = llm_state.get('iteration_count', 0)
+        
+        print(f"Resuming generate_chara_card: iteration {iteration_count}, fields: {list(fields_data.keys())}")
+    else:
+        checkpoint_id = ckpt_manager.create_checkpoint(
+            task_type='generate_chara_card',
+            input_params={
+                'role_name': role_name,
+                'creator': creator,
+                'vndb_data': vndb_data,
+                'vndb_data_raw': vndb_data_raw,
+                'output_language': output_language,
+                'compression_mode': compression_mode,
+                'force_no_compression': force_no_compression
+            }
+        )
+        fields_data = {}
+        messages = []
+        iteration_count = 0
 
     script_dir = get_base_dir()
 
@@ -1319,32 +1571,32 @@ def generate_character_card(data):
     context_limit_tokens = calculate_compression_threshold(context_limit)
     target_budget_tokens = context_limit_tokens
     
-    print(f"[CharaCard] Model: {model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
-    print(f"[CharaCard] Compression mode: {compression_mode}, Force no compression: {force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
+    print(f"Model: {model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
+    print(f"Compression mode: {compression_mode}, Force no compression: {force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
 
     if not force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if compression_mode == 'llm':
-            print(f"[CharaCard] Using LLM compression for analyses")
+            print(f"Using LLM compression for analyses")
             llm_interaction = get_llm_client()
-            compressed_analyses = _compress_analyses_with_llm(all_character_analyses, llm_interaction, target_budget_tokens)
+            compressed_analyses = _compress_analyses_with_llm(all_character_analyses, llm_interaction, target_budget_tokens, checkpoint_id=checkpoint_id)
             all_character_analyses = compressed_analyses
             context_mode = "llm_compressed"
         else:
-            print(f"[CharaCard] Using original compression")
+            print(f"Using original compression")
             target_count = max(1, len(all_character_analyses) * target_budget_tokens // raw_estimated_tokens)
             all_character_analyses = all_character_analyses[:target_count]
             context_mode = "compressed"
         
         compressed_text = json.dumps(all_character_analyses, ensure_ascii=False)
         compressed_tokens = _estimate_tokens_from_text(compressed_text)
-        print(f"[CharaCard] Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
+        print(f"Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
     else:
         if force_no_compression and raw_estimated_tokens > context_limit_tokens:
             context_mode = "full_forced"
             print(f"Force no compression enabled, using full context despite exceeding limit")
         else:
             context_mode = "full"
-        print(f"[CharaCard] No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})")
+        print(f"No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})")
 
     output_dir = os.path.join(script_dir, f"{role_name}-character-card")
     os.makedirs(output_dir, exist_ok=True)
@@ -1353,8 +1605,11 @@ def generate_character_card(data):
     image_path = None
     if vndb_data_raw and vndb_data_raw.get('image_url'):
         image_ext = os.path.splitext(vndb_data_raw['image_url'])[1] or '.jpg'
-        image_path = os.path.join(script_dir, f"{role_name}_vndb{image_ext}")
-        if download_vndb_image(vndb_data_raw['image_url'], image_path):
+        ckpt_temp_dir = ckpt_manager.get_temp_dir(checkpoint_id)
+        image_path = os.path.join(ckpt_temp_dir, f"{role_name}_vndb{image_ext}")
+        if os.path.exists(image_path):
+            print(f"VNDB image already exists: {image_path}")
+        elif download_vndb_image(vndb_data_raw['image_url'], image_path):
             print(f"Downloaded VNDB image to: {image_path}")
         else:
             image_path = None
@@ -1367,10 +1622,15 @@ def generate_character_card(data):
         json_output_path,
         creator,
         vndb_data,
-        output_language
+        output_language,
+        checkpoint_id=checkpoint_id,
+        ckpt_messages=messages if resume_checkpoint_id else None,
+        ckpt_fields_data=fields_data if resume_checkpoint_id else None,
+        ckpt_iteration_count=iteration_count if resume_checkpoint_id else None
     )
 
     if result.get('success'):
+        ckpt_manager.mark_completed(checkpoint_id, final_output_path=json_output_path)
         try:
             with open(json_output_path, 'r', encoding='utf-8') as f:
                 chara_card_json = json.load(f)
@@ -1381,7 +1641,8 @@ def generate_character_card(data):
                 'output_path': json_output_path,
                 'fields_written': result.get('fields_written', []),
                 'image_path': image_path,
-                'warning': f'无法读取JSON用于PNG嵌入: {str(e)}'
+                'warning': f'无法读取JSON用于PNG嵌入: {str(e)}',
+                'checkpoint_id': checkpoint_id
             })
 
         png_output_path = None
@@ -1408,7 +1669,7 @@ def generate_character_card(data):
                             img = background
                     else:
                         img = img.convert('RGB')
-                    temp_png = os.path.join(script_dir, f"{role_name}_temp.png")
+                    temp_png = os.path.join(ckpt_manager.get_temp_dir(checkpoint_id), f"{role_name}_temp.png")
                     img.save(temp_png, 'PNG', optimize=True)
                     print(f"Converted image to PNG: {temp_png}")
                     if embed_json_in_png(chara_card_json, temp_png, png_output_path):
@@ -1427,7 +1688,7 @@ def generate_character_card(data):
                     print(conversion_error)
                     png_output_path = None
 
-            if image_path and os.path.exists(image_path):
+            if image_path and os.path.exists(image_path) and not checkpoint_id:
                 try:
                     os.remove(image_path)
                     print(f"Cleaned up VNDB image: {image_path}")
@@ -1440,7 +1701,8 @@ def generate_character_card(data):
             'message': f'角色卡生成完成: {json_output_path}',
             'output_path': json_output_path,
             'fields_written': result.get('fields_written', []),
-            'result': result.get('result', '')
+            'result': result.get('result', ''),
+            'checkpoint_id': checkpoint_id
         }
 
         if image_path:
@@ -1452,10 +1714,64 @@ def generate_character_card(data):
 
         return jsonify(response_data)
     else:
+        if result.get('can_resume'):
+            ckpt_manager.mark_failed(checkpoint_id, result.get('message', '生成失败'))
+            return jsonify({
+                'success': False,
+                'message': result.get('message', '生成失败'),
+                'checkpoint_id': checkpoint_id,
+                'can_resume': True
+            })
         return jsonify({
             'success': False,
             'message': result.get('message', '生成失败')
         })
+
+@app.route('/api/checkpoints', methods=['GET'])
+def list_checkpoints():
+    task_type = request.args.get('task_type')
+    status = request.args.get('status')
+    checkpoints = ckpt_manager.list_checkpoints(task_type=task_type, status=status)
+    return jsonify({'success': True, 'checkpoints': checkpoints})
+
+@app.route('/api/checkpoints/<checkpoint_id>', methods=['GET'])
+def get_checkpoint(checkpoint_id):
+    ckpt = ckpt_manager.load_checkpoint(checkpoint_id)
+    if not ckpt:
+        return jsonify({'success': False, 'message': f'未找到Checkpoint: {checkpoint_id}'})
+    llm_state = ckpt_manager.load_llm_state(checkpoint_id)
+    return jsonify({'success': True, 'checkpoint': ckpt, 'llm_state': llm_state})
+
+@app.route('/api/checkpoints/<checkpoint_id>', methods=['DELETE'])
+def delete_checkpoint(checkpoint_id):
+    success = ckpt_manager.delete_checkpoint(checkpoint_id)
+    if success:
+        return jsonify({'success': True, 'message': 'Checkpoint已删除'})
+    return jsonify({'success': False, 'message': f'未找到Checkpoint: {checkpoint_id}'})
+
+@app.route('/api/checkpoints/<checkpoint_id>/resume', methods=['POST'])
+def resume_checkpoint(checkpoint_id):
+    ckpt = ckpt_manager.load_checkpoint(checkpoint_id)
+    if not ckpt:
+        return jsonify({'success': False, 'message': f'未找到Checkpoint: {checkpoint_id}'})
+    if ckpt['status'] == 'completed':
+        return jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+    
+    task_type = ckpt['task_type']
+    input_params = ckpt.get('input_params', {})
+    input_params['resume_checkpoint_id'] = checkpoint_id
+    
+    extra_params = request.json or {}
+    input_params.update(extra_params)
+    
+    if task_type == 'summarize':
+        return _do_summarize(input_params)
+    elif task_type == 'generate_skills':
+        return _do_generate_skills(input_params)
+    elif task_type == 'generate_chara_card':
+        return generate_character_card(input_params)
+    else:
+        return jsonify({'success': False, 'message': f'未知的任务类型: {task_type}'})
 
 @app.route('/api/vndb', methods=['POST'])
 def get_vndb_info():

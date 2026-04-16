@@ -133,6 +133,72 @@
             color: white;
         }
         
+        .checkpoint-item {
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background: #f7fafc;
+        }
+        
+        .checkpoint-item .ckpt-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        
+        .checkpoint-item .ckpt-type {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 0.9rem;
+        }
+        
+        .checkpoint-item .ckpt-status {
+            font-size: 0.8rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .ckpt-status.running { background: #fefcbf; color: #975a16; }
+        .ckpt-status.failed { background: #fed7d7; color: #c53030; }
+        .ckpt-status.completed { background: #c6f6d5; color: #276749; }
+        
+        .checkpoint-item .ckpt-info {
+            font-size: 0.82rem;
+            color: #718096;
+            margin-bottom: 8px;
+        }
+        
+        .checkpoint-item .ckpt-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .ckpt-actions .btn-sm {
+            padding: 4px 12px;
+            font-size: 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+            border: none;
+            font-weight: 600;
+        }
+        
+        .ckpt-actions .btn-resume {
+            background: #667eea;
+            color: white;
+        }
+        
+        .ckpt-actions .btn-resume:hover { background: #5a67d8; }
+        
+        .ckpt-actions .btn-delete {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        
+        .ckpt-actions .btn-delete:hover { background: #fc8181; color: white; }
+        
         .btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
@@ -643,6 +709,12 @@
             </button>
         </div>
         
+        <div class="card" id="checkpointCard" style="display: none;">
+            <h2 class="card-title">任务记录</h2>
+            <p class="description">查看和恢复中断的任务</p>
+            <div id="checkpointList" style="margin: 12px 0;"></div>
+        </div>
+
         <div class="card">
             <h2 class="card-title">活动日志</h2>
             <div class="log-container">
@@ -966,11 +1038,22 @@
                     }
                 }
                 
-                const contextLimit = 115000;
+                const contextResponse = await fetch('/api/context-limit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_name: document.getElementById('modelname').value })
+                });
+                const contextResult = await contextResponse.json();
+                const contextLimit = (contextResult.success && contextResult.context_limit) ? contextResult.context_limit : 115000;
+                
                 const willCompress = totalTokens > contextLimit;
                 const compressionText = willCompress 
                     ? `<span style="color: #e53e3e; font-weight: 600;">将触发压缩</span>` 
                     : '<span style="color: #38a169;">无需压缩</span>';
+                
+                const unknownModelWarning = (contextLimit === 115000)
+                    ? '<div style="margin-top: 4px; color: #d69e2e; font-size: 0.85rem;">⚠ 未知的模型！请确认你的模型名称填写正确，如确认只是程序误报可忽略这条信息。</div>'
+                    : '';
                 
                 tokenInfoEl.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -981,6 +1064,7 @@
                         ${compressionText} 
                         <span style="color: #718096; font-size: 0.85rem;">(${result.files.length} 个归纳文件)</span>
                     </div>
+                    ${unknownModelWarning}
                 `;
             } catch (e) {
                 tokenInfoEl.innerHTML = `<span style="color: #e53e3e;">计算失败: ${e.message}</span>`;
@@ -1194,6 +1278,132 @@
             
             setLoading(btn, false);
         }
+        
+        const taskTypeNames = {
+            'summarize': '归纳',
+            'generate_skills': '生成技能',
+            'generate_chara_card': '生成角色卡'
+        };
+        
+        async function refreshCheckpoints() {
+            const container = document.getElementById('checkpointList');
+            const card = document.getElementById('checkpointCard');
+            
+            try {
+                const response = await fetch('/api/checkpoints');
+                const result = await response.json();
+                
+                if (!result.success || !result.checkpoints || result.checkpoints.length === 0) {
+                    card.style.display = 'none';
+                    container.innerHTML = '';
+                    return;
+                }
+                
+                card.style.display = '';
+                container.innerHTML = '';
+                result.checkpoints.forEach(ckpt => {
+                    const typeName = taskTypeNames[ckpt.task_type] || ckpt.task_type;
+                    const roleName = ckpt.input_params?.role_name || '未知';
+                    const statusClass = ckpt.status;
+                    const statusText = ckpt.status === 'running' ? '运行中' : 
+                                       ckpt.status === 'failed' ? '已中断' : '已完成';
+                    
+                    const item = document.createElement('div');
+                    item.className = 'checkpoint-item';
+                    item.innerHTML = `
+                        <div class="ckpt-header">
+                            <span class="ckpt-type">${typeName} - ${roleName}</span>
+                            <span class="ckpt-status ${statusClass}">${statusText}</span>
+                        </div>
+                        <div class="ckpt-info">
+                            创建: ${new Date(ckpt.created_at).toLocaleString('zh-CN')}
+                            ${ckpt.progress?.current_phase ? ' | 阶段: ' + ckpt.progress.current_phase : ''}
+                        </div>
+                        <div class="ckpt-actions">
+                            ${ckpt.status !== 'completed' ? `<button class="btn-sm btn-resume" onclick="resumeCheckpoint('${ckpt.checkpoint_id}')">恢复</button>` : ''}
+                            <button class="btn-sm btn-delete" onclick="deleteCheckpoint('${ckpt.checkpoint_id}')">删除</button>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
+            } catch (e) {
+                card.style.display = 'none';
+            }
+        }
+        
+        async function resumeCheckpoint(checkpointId) {
+            log(`→ 正在恢复任务: ${checkpointId}`, 'info');
+            
+            try {
+                const baseurl = document.getElementById('baseurl').value;
+                const modelname = document.getElementById('modelname').value;
+                const apikey = document.getElementById('apikey').value;
+                const concurrency = parseInt(document.getElementById('concurrency').value) || 1;
+
+                const response = await fetch(`/api/checkpoints/${checkpointId}/resume`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        baseurl: baseurl,
+                        modelname: modelname,
+                        apikey: apikey,
+                        concurrency: concurrency
+                    })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    log(`✓ 任务恢复完成`, 'success');
+                    if (result.output_path) {
+                        log(`  输出路径: ${result.output_path}`, 'info');
+                    }
+                } else {
+                    log(`✗ 恢复失败: ${result.message}`, 'error');
+                }
+            } catch (e) {
+                log(`✗ 恢复错误: ${e.message}`, 'error');
+            }
+            
+            refreshCheckpoints();
+        }
+        
+        async function deleteCheckpoint(checkpointId) {
+            if (!confirm('确定要删除此任务记录吗？')) return;
+            
+            try {
+                const response = await fetch(`/api/checkpoints/${checkpointId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    log(`✓ 任务已删除`, 'success');
+                } else {
+                    log(`✗ 删除失败: ${result.message}`, 'error');
+                }
+            } catch (e) {
+                log(`✗ 删除错误: ${e.message}`, 'error');
+            }
+            
+            refreshCheckpoints();
+        }
+
+        let _checkpointRefreshTimer = null;
+
+        function startCheckpointAutoRefresh(intervalMs = 5000) {
+            stopCheckpointAutoRefresh();
+            refreshCheckpoints();
+            _checkpointRefreshTimer = setInterval(refreshCheckpoints, intervalMs);
+        }
+
+        function stopCheckpointAutoRefresh() {
+            if (_checkpointRefreshTimer) {
+                clearInterval(_checkpointRefreshTimer);
+                _checkpointRefreshTimer = null;
+            }
+        }
+
+        startCheckpointAutoRefresh();
     </script>
 </body>
 </html>
