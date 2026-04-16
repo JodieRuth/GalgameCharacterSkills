@@ -42,9 +42,9 @@ def get_model_context_limit(model_name):
 
 def calculate_compression_threshold(context_limit):
     if context_limit > 131073:
-        return int(context_limit * 0.85)  
+        return int(context_limit * 0.80)  
     else:
-        return int(context_limit * 0.90)  
+        return int(context_limit * 0.85)  
 
 
 def load_r18_traits():
@@ -66,6 +66,16 @@ def clean_vndb_data(vndb_data):
         cleaned.pop('image_url', None)
         return cleaned
     return vndb_data
+
+def _try_resume_checkpoint(resume_checkpoint_id):
+    if not resume_checkpoint_id:
+        return None, None
+    ckpt = ckpt_manager.load_checkpoint(resume_checkpoint_id)
+    if not ckpt:
+        return None, jsonify({'success': False, 'message': f'未找到Checkpoint: {resume_checkpoint_id}'})
+    if ckpt['status'] == 'completed':
+        return None, jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+    return ckpt, None
 
 def get_base_dir():
     if getattr(sys, 'frozen', False):
@@ -1019,11 +1029,9 @@ def _do_summarize(data):
     slice_size_k = data.get('slice_size_k', 50)
 
     if resume_checkpoint_id:
-        ckpt = ckpt_manager.load_checkpoint(resume_checkpoint_id)
-        if not ckpt:
-            return jsonify({'success': False, 'message': f'未找到Checkpoint: {resume_checkpoint_id}'})
-        if ckpt['status'] == 'completed':
-            return jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+        ckpt, error = _try_resume_checkpoint(resume_checkpoint_id)
+        if error:
+            return error
         
         role_name = ckpt['input_params'].get('role_name', role_name)
         instruction = ckpt['input_params'].get('instruction', instruction)
@@ -1179,11 +1187,9 @@ def generate_skills_folder(data):
     resume_checkpoint_id = data.get('resume_checkpoint_id')
 
     if resume_checkpoint_id:
-        ckpt = ckpt_manager.load_checkpoint(resume_checkpoint_id)
-        if not ckpt:
-            return jsonify({'success': False, 'message': f'未找到Checkpoint: {resume_checkpoint_id}'})
-        if ckpt['status'] == 'completed':
-            return jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+        ckpt, error = _try_resume_checkpoint(resume_checkpoint_id)
+        if error:
+            return error
         
         role_name = ckpt['input_params'].get('role_name', role_name)
         vndb_data = ckpt['input_params'].get('vndb_data', vndb_data)
@@ -1493,11 +1499,9 @@ def generate_character_card(data):
     resume_checkpoint_id = data.get('resume_checkpoint_id')
 
     if resume_checkpoint_id:
-        ckpt = ckpt_manager.load_checkpoint(resume_checkpoint_id)
-        if not ckpt:
-            return jsonify({'success': False, 'message': f'未找到Checkpoint: {resume_checkpoint_id}'})
-        if ckpt['status'] == 'completed':
-            return jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+        ckpt, error = _try_resume_checkpoint(resume_checkpoint_id)
+        if error:
+            return error
         
         role_name = ckpt['input_params'].get('role_name', role_name)
         creator = ckpt['input_params'].get('creator', creator)
