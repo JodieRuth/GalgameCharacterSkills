@@ -12,12 +12,33 @@ import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
+import litellm
 
 from utils.llm_interaction import LLMInteraction
 from utils.file_processor import FileProcessor
 from utils.tool_handler import ToolHandler
 
 _tokenizer = tiktoken.get_encoding("cl100k_base")
+
+
+def get_model_context_limit(model_name):
+    if not model_name:
+        return 115000
+    
+    try:
+        model_info = litellm.get_model_info(model_name)
+        max_tokens = model_info.get("max_input_tokens", model_info.get("max_tokens", 115000))
+        if max_tokens and max_tokens > 0:
+            return max_tokens
+    except Exception as e:
+        return 115000
+
+
+def calculate_compression_threshold(context_limit):
+    if context_limit > 131073:
+        return int(context_limit * 0.85)  
+    else:
+        return int(context_limit * 0.90)  
 
 
 def load_r18_traits():
@@ -71,7 +92,7 @@ log = logging.getLogger('werkzeug')
 log.addFilter(NoRequestFilter())
 
 def open_browser():
-    time.sleep(1.5)
+    time.sleep(0.5)
     webbrowser.open('http://127.0.0.1:5000')
 
 
@@ -163,30 +184,6 @@ def _extract_key_sections(content, max_chars=8000):
     if not selected:
         return ""
     return "\n\n".join(selected)
-
-
-def _build_skill_generation_context(summary_files, max_total_chars=45000, max_chars_per_file=3500):
-    compact_sections = []
-    used = 0
-
-    for file_path in summary_files:
-        if used >= max_total_chars:
-            break
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except Exception:
-            continue
-
-        section_budget = min(max_chars_per_file, max_total_chars - used)
-        if section_budget <= 0:
-            break
-        compact = _extract_summary_highlights(content, max_chars=section_budget)
-        section = f"=== {os.path.basename(file_path)} ===\n{compact}"
-        compact_sections.append(section)
-        used += len(section) + 2
-
-    return "\n\n".join(compact_sections)
 
 
 def _build_full_skill_generation_context(summary_files):
@@ -294,45 +291,6 @@ def _estimate_tokens_from_text(text):
         return len(_tokenizer.encode(text))
     except Exception:
         return max(1, len(text) // 2)
-
-
-def _group_summaries_for_llm_compression(summary_files, group_size=100000):
-    groups = []
-    current_group = []
-    current_tokens = 0
-    group_index = 0
-    
-    for file_path in summary_files:
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            file_tokens = _estimate_tokens_from_text(content)
-            
-            if file_tokens > group_size:
-                if current_group:
-                    groups.append((group_index, current_group, len(current_group)))
-                    group_index += 1
-                    current_group = []
-                    current_tokens = 0
-                groups.append((group_index, [file_path], 1))
-                group_index += 1
-            else:
-                if current_tokens + file_tokens > group_size and current_group:
-                    groups.append((group_index, current_group, len(current_group)))
-                    group_index += 1
-                    current_group = [file_path]
-                    current_tokens = file_tokens
-                else:
-                    current_group.append(file_path)
-                    current_tokens += file_tokens
-        except Exception as e:
-            print(f"Warning: Failed to read {file_path}: {e}")
-            continue
-    
-    if current_group:
-        groups.append((group_index, current_group, len(current_group)))
-    
-    return groups
 
 
 def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000):
@@ -1067,6 +1025,7 @@ def generate_skills_folder(data):
     vndb_data = clean_vndb_data(data.get('vndb_data'))
     output_language = data.get('output_language', '')
     compression_mode = data.get('compression_mode', 'original')
+    force_no_compression = data.get('force_no_compression', False)
     
     script_dir = get_base_dir()
     summary_files = []
@@ -1083,12 +1042,15 @@ def generate_skills_folder(data):
     raw_full_text = _build_full_skill_generation_context(summary_files)
     raw_total_chars = len(raw_full_text)
     raw_estimated_tokens = _estimate_tokens_from_text(raw_full_text)
-    context_limit_tokens = 115000  
-    target_budget_tokens = 115000
+    model_name = data.get('modelname', '')
+    context_limit = get_model_context_limit(model_name)
+    context_limit_tokens = calculate_compression_threshold(context_limit)
+    target_budget_tokens = context_limit_tokens
     
-    print(f"Compression mode: {compression_mode}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
+    print(f"Model: {model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
+    print(f"Compression mode: {compression_mode}, Force no compression: {force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
 
-    if raw_estimated_tokens > context_limit_tokens:
+    if not force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if compression_mode == 'llm':
             print(f"Using LLM compression")
             llm_interaction = get_llm_client()
@@ -1104,7 +1066,11 @@ def generate_skills_folder(data):
             context_mode = "compressed"
     else:
         summaries_text = raw_full_text
-        context_mode = "full"
+        if force_no_compression and raw_estimated_tokens > context_limit_tokens:
+            context_mode = "full_forced"
+            print(f"Force no compression enabled, using full context despite exceeding limit")
+        else:
+            context_mode = "full"
 
     if not summaries_text:
         return jsonify({'success': False, 'message': f'未能读取角色 "{role_name}" 的归纳内容'})
@@ -1113,6 +1079,7 @@ def generate_skills_folder(data):
     compression_ratio = (compressed_chars / raw_total_chars) if raw_total_chars else 0
     strategy_name = {
         'full': 'full_context',
+        'full_forced': 'full_context_no_compression',
         'compressed': 'head_tail_weighted_1_2_then_key_sections',
         'llm_compressed': 'llm_deduplication'
     }.get(context_mode, 'unknown')
@@ -1314,6 +1281,7 @@ def generate_character_card(data):
     vndb_data = clean_vndb_data(vndb_data_raw)
     output_language = data.get('output_language', '')
     compression_mode = data.get('compression_mode', 'original')
+    force_no_compression = data.get('force_no_compression', False)
 
     script_dir = get_base_dir()
 
@@ -1346,12 +1314,15 @@ def generate_character_card(data):
 
     analyses_text = json.dumps(all_character_analyses, ensure_ascii=False)
     raw_estimated_tokens = _estimate_tokens_from_text(analyses_text)
-    context_limit_tokens = 115000
-    target_budget_tokens = 115000
+    model_name = data.get('modelname', '')
+    context_limit = get_model_context_limit(model_name)
+    context_limit_tokens = calculate_compression_threshold(context_limit)
+    target_budget_tokens = context_limit_tokens
     
-    print(f"[CharaCard] Compression mode: {compression_mode}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
+    print(f"[CharaCard] Model: {model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
+    print(f"[CharaCard] Compression mode: {compression_mode}, Force no compression: {force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
 
-    if raw_estimated_tokens > context_limit_tokens:
+    if not force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if compression_mode == 'llm':
             print(f"[CharaCard] Using LLM compression for analyses")
             llm_interaction = get_llm_client()
@@ -1368,7 +1339,11 @@ def generate_character_card(data):
         compressed_tokens = _estimate_tokens_from_text(compressed_text)
         print(f"[CharaCard] Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
     else:
-        context_mode = "full"
+        if force_no_compression and raw_estimated_tokens > context_limit_tokens:
+            context_mode = "full_forced"
+            print(f"Force no compression enabled, using full context despite exceeding limit")
+        else:
+            context_mode = "full"
         print(f"[CharaCard] No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})")
 
     output_dir = os.path.join(script_dir, f"{role_name}-character-card")

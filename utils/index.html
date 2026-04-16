@@ -623,6 +623,16 @@
                 <span class="compression-description" id="compressionDescription">使用头尾加权策略压缩摘要</span>
             </div>
             
+            <div class="form-group" style="margin-top: 15px;">
+                <label class="form-label" style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="forceNoCompression" style="margin-right: 8px; width: auto;">
+                    <span>强制不压缩（即使超出上下文限制也使用完整内容）</span>
+                </label>
+                <span style="font-size: 0.85rem; color: #718096; margin-left: 24px; display: block; margin-top: 4px;">
+                    警告：启用此选项可能导致请求超出模型的上下文窗口限制
+                </span>
+            </div>
+            
             <div class="token-info" id="generationTokenInfo" style="margin: 12px 0; padding: 10px; background: #f7fafc; border-radius: 6px; font-size: 0.9rem;">
                 <span style="color: #718096;">请选择角色查看归纳统计</span>
             </div>
@@ -1138,6 +1148,7 @@
                     output_language: document.getElementById('outputLanguage').value,
                     vndb_data: vndbData,
                     compression_mode: compressionMode,
+                    force_no_compression: document.getElementById('forceNoCompression').checked,
                     ...getConfig()
                 };
                 
