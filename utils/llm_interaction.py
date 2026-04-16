@@ -2,8 +2,7 @@ import litellm
 import json
 import sys
 import os
-
-litellm.enable_system_proxy = True
+from datetime import datetime
 
 class LLMInteraction:
     _request_count = 0
@@ -13,24 +12,25 @@ class LLMInteraction:
         self.baseurl = ""
         self.modelname = ""
         self.apikey = ""
-        self.python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        self.max_retries = 3
     
-    def set_config(self, baseurl, modelname, apikey):
+    def set_config(self, baseurl, modelname, apikey, max_retries=None):
         self.baseurl = baseurl
         self.modelname = modelname
         self.apikey = apikey
-        litellm.api_key = apikey
-        if baseurl:
-            litellm.api_base = baseurl
+        if max_retries is not None and max_retries > 0:
+            self.max_retries = max_retries
     
     @classmethod
     def set_total_requests(cls, total):
         cls._total_requests = total
         cls._request_count = 0
     
-    def send_message(self, messages, tools=None, max_retries=3, use_counter=True):
+    def send_message(self, messages, tools=None, max_retries=None, use_counter=True):
         import time
         
+        if max_retries is None:
+            max_retries = self.max_retries
         model = self.modelname
         baseurl = self.baseurl.lower() if self.baseurl else ''
         
@@ -125,70 +125,6 @@ class LLMInteraction:
             if hasattr(choice, 'message') and hasattr(choice.message, 'tool_calls'):
                 return choice.message.tool_calls
         return None
-    
-    def generate_cleanup_script(self, file_content, source_file_path, output_file_path):
-        file_name = os.path.basename(source_file_path)
-        name, ext = os.path.splitext(file_name)
-        script_file_path = os.path.join(os.path.dirname(source_file_path), f"{name}_cleanup.py")
-        
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "write_file",
-                    "description": "Write file to local disk",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "File path"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "File content"
-                            }
-                        },
-                        "required": ["file_path", "content"]
-                    }
-                }
-            }
-        ]
-        
-        system_prompt = f"""You are a professional text processing assistant.
-Your task is to generate a Python cleanup and organization script based on the provided text format.
-
-CRITICAL REQUIREMENTS:
-1. Target Python version: {self.python_version}
-2. Source file path: {source_file_path}
-3. Output file path: {output_file_path}
-4. Script file path (MUST save to this exact path): {script_file_path}
-5. You MUST ONLY use Python's native text processing capabilities (str, re, os, sys, io, pathlib)
-6. You are FORBIDDEN from using any external libraries (no pandas, no numpy, no third-party packages)
-7. The script should read from the source file and write the cleaned content to the output file
-8. Use only built-in Python modules for file I/O and text processing
-
-The script should:
-- Read the entire source file
-- Clean and organize the content based on its format
-- Handle encoding properly (UTF-8)
-- Write the cleaned content to the specified output path
-- Include error handling
-
-IMPORTANT: Use the write_file tool to save the generated script to EXACTLY this path: {script_file_path}"""
-        
-        messages = [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": f"Please generate a Python cleanup script based on the following text format (first 1000 lines):\n{file_content}"
-            }
-        ]
-        
-        return self.send_message(messages, tools), script_file_path
     
     def summarize_content(self, content, role_name, instruction, output_file_path, output_language="", vndb_data=None):
         tools = [
@@ -1433,5 +1369,3 @@ Return a JSON object with this structure:
             result = ToolHandler.parse_llm_json_response(content) or {}
             return result
         return {}
-
-from datetime import datetime

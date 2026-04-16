@@ -41,10 +41,6 @@ class CheckpointManager:
         self._file_lock = threading.Lock()
         self._initialized = True
 
-    @classmethod
-    def reset_instance(cls):
-        cls._instance = None
-
     def create_checkpoint(self, task_type: str, input_params: dict,
                           metadata: dict = None) -> str:
         checkpoint_id = f"{task_type}_{uuid.uuid4().hex[:8]}"
@@ -317,21 +313,6 @@ class CheckpointManager:
         self._active_checkpoints.pop(checkpoint_id, None)
         return True
 
-    def cleanup_old_checkpoints(self, days: int = 7):
-        cutoff = datetime.now().timestamp() - (days * 24 * 3600)
-        if not os.path.exists(self.checkpoint_dir):
-            return
-        for filename in os.listdir(self.checkpoint_dir):
-            if not filename.endswith('.json'):
-                continue
-            path = os.path.join(self.checkpoint_dir, filename)
-            try:
-                if os.path.getmtime(path) < cutoff:
-                    checkpoint_id = filename[:-5]
-                    self.delete_checkpoint(checkpoint_id)
-            except Exception:
-                pass
-
     def _cleanup_temp_files(self, checkpoint_id: str):
         ckpt_dir = os.path.join(self.temp_dir, checkpoint_id)
         if os.path.exists(ckpt_dir):
@@ -344,18 +325,3 @@ class CheckpointManager:
         ckpt_dir = os.path.join(self.temp_dir, checkpoint_id)
         os.makedirs(ckpt_dir, exist_ok=True)
         return ckpt_dir
-
-    def get_resumable_info(self, checkpoint_id: str) -> Optional[dict]:
-        data = self.load_checkpoint(checkpoint_id)
-        if not data:
-            return None
-        if data['status'] == 'completed':
-            return None
-        return {
-            'checkpoint_id': data['checkpoint_id'],
-            'task_type': data['task_type'],
-            'status': data['status'],
-            'progress': data['progress'],
-            'input_params': data['input_params'],
-            'can_resume': True
-        }

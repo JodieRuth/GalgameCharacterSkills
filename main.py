@@ -86,7 +86,6 @@ CORS(app)
 file_processor = FileProcessor()
 ckpt_manager = CheckpointManager()
 current_slices = []
-summaries = []
 
 R18_TRAITS = load_r18_traits()
 
@@ -409,7 +408,6 @@ def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000, c
                 for tool_call in message.tool_calls:
                     if tool_call.function.name == 'remove_duplicate_sections':
                         has_remove_call = True
-                        import json
                         arguments = json.loads(tool_call.function.arguments)
                         file_sections = arguments.get('file_sections', [])
                         
@@ -612,7 +610,6 @@ def _compress_analyses_with_llm(analyses, llm_client, target_budget_tokens=11500
                 for tool_call in message.tool_calls:
                     if tool_call.function.name == 'remove_duplicate_sections':
                         has_remove_call = True
-                        import json
                         arguments = json.loads(tool_call.function.arguments)
                         file_sections = arguments.get('file_sections', [])
                         
@@ -707,9 +704,10 @@ def get_llm_client():
     baseurl = data.get('baseurl', '')
     modelname = data.get('modelname', '')
     apikey = data.get('apikey', '')
+    max_retries = data.get('max_retries', 0) or None
     client = LLMInteraction()
     if baseurl or modelname or apikey:
-        client.set_config(baseurl, modelname, apikey)
+        client.set_config(baseurl, modelname, apikey, max_retries=max_retries)
     return client
 
 @app.route('/')
@@ -721,12 +719,8 @@ def scan_files():
     files = file_processor.scan_resource_files()
     return jsonify({'success': True, 'files': files})
 
-_last_scan_result = None
-
 @app.route('/api/summaries/roles', methods=['GET'])
 def scan_summary_roles():
-    global _last_scan_result
-
 
     skills_roles = set()  
     chara_card_roles = set()  
@@ -872,7 +866,7 @@ def process_single_slice(args):
     slice_index, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id = args
     llm_client = LLMInteraction()
     if config.get('baseurl') or config.get('modelname') or config.get('apikey'):
-        llm_client.set_config(config.get('baseurl'), config.get('modelname'), config.get('apikey'))
+        llm_client.set_config(config.get('baseurl'), config.get('modelname'), config.get('apikey'), max_retries=config.get('max_retries'))
 
     if checkpoint_id:
         existing = ckpt_manager.get_slice_result(checkpoint_id, slice_index)
@@ -998,7 +992,7 @@ def summarize():
     return _do_summarize(request.json)
 
 def _do_summarize(data):
-    global current_slices, summaries
+    global current_slices
     role_name = data.get('role_name', '')
     instruction = data.get('instruction', '')
     concurrency = data.get('concurrency', 1)
@@ -1017,7 +1011,8 @@ def _do_summarize(data):
     config = {
         'baseurl': data.get('baseurl', ''),
         'modelname': data.get('modelname', ''),
-        'apikey': data.get('apikey', '')
+        'apikey': data.get('apikey', ''),
+        'max_retries': data.get('max_retries', 0) or None
     }
     output_language = data.get('output_language', '')
     vndb_data = clean_vndb_data(data.get('vndb_data'))
@@ -1139,14 +1134,15 @@ def _do_summarize(data):
         })
 
     if errors:
-        ckpt_manager.mark_completed(checkpoint_id)
+        ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片失败，可恢复继续处理')
         return jsonify({
             'success': True,
-            'message': f'归纳完成，{len(errors)} 个切片失败',
+            'message': f'归纳部分完成，{len(errors)} 个切片失败，可通过任务列表继续',
             'slice_count': len(current_slices),
             'errors': errors,
             'results': all_results,
-            'checkpoint_id': checkpoint_id
+            'checkpoint_id': checkpoint_id,
+            'can_resume': True
         })
     
     ckpt_manager.mark_completed(checkpoint_id)
