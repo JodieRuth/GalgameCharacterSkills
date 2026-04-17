@@ -1,4 +1,4 @@
-from .checkpoint_utils import load_resumable_checkpoint
+from ..utils.checkpoint_utils import load_resumable_checkpoint
 
 
 def list_checkpoints_result(ckpt_manager, task_type=None, status=None):

@@ -1,11 +1,11 @@
 import json
 import os
 
-from .checkpoint_utils import load_resumable_checkpoint
-from .summary_discovery import find_role_analysis_summary_file
-from .request_config import build_llm_config
-from .llm_budget import get_model_context_limit, calculate_compression_threshold
-from .compression_service import compress_analyses_with_llm
+from ..utils.checkpoint_utils import load_resumable_checkpoint
+from ..utils.summary_discovery import find_role_analysis_summary_file
+from ..utils.request_config import build_llm_config
+from ..utils.llm_budget import get_model_context_limit, calculate_compression_threshold
+from ..utils.compression_service import compress_analyses_with_llm
 
 
 def run_generate_character_card_task(

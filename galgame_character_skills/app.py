@@ -17,16 +17,16 @@ from .services.checkpoint_service import (
     delete_checkpoint_result,
     resume_checkpoint_result,
 )
-from .services.summary_discovery import discover_summary_roles, find_summary_files_for_role
-from .services.input_normalization import extract_file_paths
+from .utils.summary_discovery import discover_summary_roles, find_summary_files_for_role
+from .utils.input_normalization import extract_file_paths
 from .services.vndb_service import fetch_vndb_character
-from .services.vndb_utils import load_r18_traits, clean_vndb_data
-from .services.image_card_utils import download_vndb_image, embed_json_in_png
-from .services.path_utils import get_base_dir, get_resource_path
-from .services.llm_factory import build_llm_client
-from .services.token_utils import estimate_tokens_from_text
-from .services.llm_budget import get_model_context_limit
-from .services.app_runtime import open_browser, configure_werkzeug_logging
+from .utils.vndb_utils import load_r18_traits, clean_vndb_data
+from .utils.image_card_utils import download_vndb_image, embed_json_in_png
+from .utils.path_utils import get_base_dir, get_resource_path
+from .utils.llm_factory import build_llm_client
+from .utils.token_utils import estimate_tokens_from_text
+from .utils.llm_budget import get_model_context_limit
+from .utils.app_runtime import open_browser, configure_werkzeug_logging
 
 
 app = Flask(__name__, template_folder=get_resource_path('utils'))

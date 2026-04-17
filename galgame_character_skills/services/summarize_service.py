@@ -5,9 +5,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from utils.llm_interaction import LLMInteraction
 from utils.tool_handler import ToolHandler
-from .checkpoint_utils import load_resumable_checkpoint
-from .request_config import build_llm_config
-from .input_normalization import extract_file_paths
+from ..utils.checkpoint_utils import load_resumable_checkpoint
+from ..utils.request_config import build_llm_config
+from ..utils.input_normalization import extract_file_paths
 
 
 def _process_single_slice(args, ckpt_manager):
