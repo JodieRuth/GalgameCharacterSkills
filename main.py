@@ -3,12 +3,9 @@ import sys
 import webbrowser
 import threading
 import time
-import json
-import tiktoken
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 
-from utils.llm_interaction import LLMInteraction
 from utils.file_processor import FileProcessor
 from utils.checkpoint_manager import CheckpointManager
 from services.summarize_service import run_summarize_task
@@ -20,12 +17,12 @@ from services.input_normalization import extract_file_paths
 from services.vndb_service import fetch_vndb_character
 from services.vndb_utils import load_r18_traits, clean_vndb_data
 from services.image_card_utils import download_vndb_image, embed_json_in_png
+from services.llm_factory import build_llm_client
+from services.token_utils import estimate_tokens_from_text
 from services.llm_budget import (
     get_model_context_limit as resolve_model_context_limit,
     calculate_compression_threshold as resolve_compression_threshold,
 )
-
-_tokenizer = tiktoken.get_encoding("cl100k_base")
 
 
 def get_model_context_limit(model_name):
@@ -68,27 +65,6 @@ log.addFilter(NoRequestFilter())
 def open_browser():
     time.sleep(0.5)
     webbrowser.open('http://127.0.0.1:5000')
-
-
-def _estimate_tokens_from_text(text):
-    if not text:
-        return 0
-    try:
-        return len(_tokenizer.encode(text))
-    except Exception:
-        return max(1, len(text) // 2)
-
-
-def build_llm_client(config=None):
-    config = config or {}
-    baseurl = config.get('baseurl', '')
-    modelname = config.get('modelname', '')
-    apikey = config.get('apikey', '')
-    max_retries = config.get('max_retries', 0) or None
-    client = LLMInteraction()
-    if baseurl or modelname or apikey:
-        client.set_config(baseurl, modelname, apikey, max_retries=max_retries)
-    return client
 
 
 def _json_body():
@@ -187,7 +163,6 @@ def _do_summarize(data):
         data=data,
         file_processor=file_processor,
         ckpt_manager=ckpt_manager,
-        build_llm_client=build_llm_client,
         clean_vndb_data=clean_vndb_data
     )
     return jsonify(result)
@@ -214,7 +189,7 @@ def generate_skills_folder(data):
         ckpt_manager=ckpt_manager,
         clean_vndb_data=clean_vndb_data,
         get_base_dir=get_base_dir,
-        estimate_tokens=_estimate_tokens_from_text,
+        estimate_tokens=estimate_tokens_from_text,
         build_llm_client=build_llm_client
     )
     return jsonify(result)
@@ -225,7 +200,7 @@ def generate_character_card(data):
         ckpt_manager=ckpt_manager,
         clean_vndb_data=clean_vndb_data,
         get_base_dir=get_base_dir,
-        estimate_tokens=_estimate_tokens_from_text,
+        estimate_tokens=estimate_tokens_from_text,
         build_llm_client=build_llm_client,
         download_vndb_image=download_vndb_image,
         embed_json_in_png=embed_json_in_png

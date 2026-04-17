@@ -135,7 +135,7 @@ def _process_single_slice(args, ckpt_manager):
     return result
 
 
-def run_summarize_task(data, file_processor, ckpt_manager, build_llm_client, clean_vndb_data):
+def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
     role_name = data.get('role_name', '')
     instruction = data.get('instruction', '')
     concurrency = data.get('concurrency', 1)
