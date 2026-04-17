@@ -1,6 +1,50 @@
 import os
 
 
+_VNDB_FIELD_LABELS = [
+    ("name", "Name"),
+    ("original_name", "Original Name"),
+    ("description", "Description"),
+    ("age", "Age"),
+    ("birthday", "Birthday"),
+    ("blood_type", "Blood Type"),
+]
+
+
+def _build_vndb_section(vndb_data):
+    lines = ["", "", "---", "", "## VNDB Character Information", ""]
+
+    for field, label in _VNDB_FIELD_LABELS:
+        value = vndb_data.get(field)
+        if value:
+            lines.append(f"- **{label}**: {value}")
+
+    aliases = vndb_data.get("aliases")
+    if aliases:
+        lines.append(f"- **Aliases**: {', '.join(aliases)}")
+
+    height = vndb_data.get("height")
+    if height:
+        lines.append(f"- **Height**: {height}cm")
+
+    weight = vndb_data.get("weight")
+    if weight:
+        lines.append(f"- **Weight**: {weight}kg")
+
+    if vndb_data.get("bust") and vndb_data.get("waist") and vndb_data.get("hips"):
+        lines.append(f"- **Measurements**: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm")
+
+    traits = vndb_data.get("traits")
+    if traits:
+        lines.append(f"- **Traits**: {', '.join(traits)}")
+
+    games = vndb_data.get("vns")
+    if games:
+        lines.append(f"- **Visual Novels**: {', '.join(games[:3])}")
+
+    return "\n".join(lines)
+
+
 def append_vndb_info_to_skill_md(skill_md_path, vndb_data):
     if not (skill_md_path and os.path.exists(skill_md_path) and vndb_data):
         return None
@@ -9,34 +53,7 @@ def append_vndb_info_to_skill_md(skill_md_path, vndb_data):
         with open(skill_md_path, 'r', encoding='utf-8') as f:
             skill_content = f.read()
 
-        vndb_section = "\n\n---\n\n## VNDB Character Information\n\n"
-        if vndb_data.get('name'):
-            vndb_section += f"- **Name**: {vndb_data['name']}\n"
-        if vndb_data.get('original_name'):
-            vndb_section += f"- **Original Name**: {vndb_data['original_name']}\n"
-        if vndb_data.get('aliases'):
-            vndb_section += f"- **Aliases**: {', '.join(vndb_data['aliases'])}\n"
-        if vndb_data.get('description'):
-            vndb_section += f"- **Description**: {vndb_data['description']}\n"
-        if vndb_data.get('age'):
-            vndb_section += f"- **Age**: {vndb_data['age']}\n"
-        if vndb_data.get('birthday'):
-            vndb_section += f"- **Birthday**: {vndb_data['birthday']}\n"
-        if vndb_data.get('blood_type'):
-            vndb_section += f"- **Blood Type**: {vndb_data['blood_type']}\n"
-        if vndb_data.get('height'):
-            vndb_section += f"- **Height**: {vndb_data['height']}cm\n"
-        if vndb_data.get('weight'):
-            vndb_section += f"- **Weight**: {vndb_data['weight']}kg\n"
-        if vndb_data.get('bust') and vndb_data.get('waist') and vndb_data.get('hips'):
-            vndb_section += f"- **Measurements**: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm\n"
-        if vndb_data.get('traits'):
-            vndb_section += f"- **Traits**: {', '.join(vndb_data['traits'])}\n"
-        if vndb_data.get('vns'):
-            games = vndb_data['vns'][:3]
-            vndb_section += f"- **Visual Novels**: {', '.join(games)}\n"
-
-        skill_content += vndb_section
+        skill_content += _build_vndb_section(vndb_data)
         with open(skill_md_path, 'w', encoding='utf-8') as f:
             f.write(skill_content)
         return "Added VNDB info to SKILL.md"
