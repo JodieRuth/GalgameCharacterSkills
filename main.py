@@ -18,6 +18,7 @@ from services.summary_discovery import discover_summary_roles, find_summary_file
 from services.checkpoint_utils import load_resumable_checkpoint
 from services.input_normalization import extract_file_paths
 from services.vndb_service import fetch_vndb_character
+from services.vndb_utils import load_r18_traits, clean_vndb_data
 from services.image_card_utils import download_vndb_image, embed_json_in_png
 from services.llm_budget import (
     get_model_context_limit as resolve_model_context_limit,
@@ -34,26 +35,6 @@ def get_model_context_limit(model_name):
 def calculate_compression_threshold(context_limit):
     return resolve_compression_threshold(context_limit)
 
-
-def load_r18_traits():
-    try:
-        base_dir = get_base_dir()
-        json_path = os.path.join(base_dir, 'utils', 'r18_traits.json')
-        with open(json_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        encoded_traits = data.get('encoded_traits', [])
-        return {base64.b64decode(t.encode()).decode('utf-8') for t in encoded_traits}
-    except Exception as e:
-        print(f"Warning: Failed to load r18_traits: {e}")
-        return set()
-
-
-def clean_vndb_data(vndb_data):
-    if vndb_data and isinstance(vndb_data, dict):
-        cleaned = vndb_data.copy()
-        cleaned.pop('image_url', None)
-        return cleaned
-    return vndb_data
 
 def get_base_dir():
     if getattr(sys, 'frozen', False):
@@ -74,7 +55,7 @@ CORS(app)
 file_processor = FileProcessor()
 ckpt_manager = CheckpointManager()
 
-R18_TRAITS = load_r18_traits()
+R18_TRAITS = load_r18_traits(get_base_dir())
 
 class NoRequestFilter:
     def filter(self, record):
