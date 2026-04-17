@@ -3,6 +3,7 @@ import os
 
 from services.checkpoint_utils import load_resumable_checkpoint
 from services.summary_discovery import find_role_analysis_summary_file
+from services.request_config import build_llm_config
 
 
 def run_generate_character_card_task(
@@ -26,12 +27,7 @@ def run_generate_character_card_task(
     compression_mode = data.get('compression_mode', 'original')
     force_no_compression = data.get('force_no_compression', False)
     resume_checkpoint_id = data.get('resume_checkpoint_id')
-    config = {
-        'baseurl': data.get('baseurl', ''),
-        'modelname': data.get('modelname', ''),
-        'apikey': data.get('apikey', ''),
-        'max_retries': data.get('max_retries', 0) or None
-    }
+    config = build_llm_config(data)
 
     if resume_checkpoint_id:
         ckpt, error = load_resumable_checkpoint(ckpt_manager, resume_checkpoint_id)

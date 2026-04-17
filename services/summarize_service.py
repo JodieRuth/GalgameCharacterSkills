@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.llm_interaction import LLMInteraction
 from utils.tool_handler import ToolHandler
 from services.checkpoint_utils import load_resumable_checkpoint
+from services.request_config import build_llm_config
 
 
 def _process_single_slice(args, ckpt_manager):
@@ -149,12 +150,7 @@ def run_summarize_task(data, file_processor, ckpt_manager, build_llm_client, cle
     if not role_name:
         return {'success': False, 'message': '请输入角色名称'}
 
-    config = {
-        'baseurl': data.get('baseurl', ''),
-        'modelname': data.get('modelname', ''),
-        'apikey': data.get('apikey', ''),
-        'max_retries': data.get('max_retries', 0) or None
-    }
+    config = build_llm_config(data)
     output_language = data.get('output_language', '')
     vndb_data = clean_vndb_data(data.get('vndb_data'))
     slice_size_k = data.get('slice_size_k', 50)
