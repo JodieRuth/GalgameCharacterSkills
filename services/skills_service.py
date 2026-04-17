@@ -3,6 +3,7 @@ import os
 
 from utils.tool_handler import ToolHandler
 from services.checkpoint_utils import load_resumable_checkpoint
+from services.summary_discovery import find_role_summary_markdown_files
 
 
 def run_generate_skills_task(
@@ -66,15 +67,7 @@ def run_generate_skills_task(
         iteration = 0
 
     script_dir = get_base_dir()
-    summary_files = []
-    for root, dirs, files in os.walk(script_dir):
-        for dir_name in dirs:
-            if dir_name.endswith('_summaries'):
-                summaries_dir = os.path.join(root, dir_name)
-                for filename in sorted(os.listdir(summaries_dir)):
-                    if filename.endswith('.md') and f'_{role_name}.md' in filename:
-                        file_path = os.path.join(summaries_dir, filename)
-                        summary_files.append(file_path)
+    summary_files = find_role_summary_markdown_files(script_dir, role_name)
     if not summary_files:
         return {'success': False, 'message': f'未找到角色 "{role_name}" 的归纳文件，请先完成归纳'}
     raw_full_text = build_full_context(summary_files)

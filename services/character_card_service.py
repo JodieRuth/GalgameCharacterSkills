@@ -2,6 +2,7 @@ import json
 import os
 
 from services.checkpoint_utils import load_resumable_checkpoint
+from services.summary_discovery import find_role_analysis_summary_file
 
 
 def run_generate_character_card_task(
@@ -70,18 +71,7 @@ def run_generate_character_card_task(
         iteration_count = 0
 
     script_dir = get_base_dir()
-
-    analysis_file = None
-    for root, dirs, files in os.walk(script_dir):
-        for dir_name in dirs:
-            if dir_name.endswith('_summaries'):
-                summaries_dir = os.path.join(root, dir_name)
-                summary_path = os.path.join(summaries_dir, f"{role_name}_analysis_summary.json")
-                if os.path.exists(summary_path):
-                    analysis_file = summary_path
-                    break
-        if analysis_file:
-            break
+    analysis_file = find_role_analysis_summary_file(script_dir, role_name)
 
     if not analysis_file:
         return {'success': False, 'message': f'未找到角色 "{role_name}" 的分析文件，请先完成归纳'}
