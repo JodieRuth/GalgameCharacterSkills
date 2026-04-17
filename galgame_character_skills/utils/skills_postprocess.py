@@ -70,12 +70,7 @@ def append_vndb_info_to_skill_md(skill_md_path, vndb_data):
         return None
 
     try:
-        with open(skill_md_path, 'r', encoding='utf-8') as f:
-            skill_content = f.read()
-
-        skill_content += _build_vndb_section(vndb_data)
-        with open(skill_md_path, 'w', encoding='utf-8') as f:
-            f.write(skill_content)
+        _append_text_to_file(skill_md_path, _build_vndb_section(vndb_data))
         return "Added VNDB info to SKILL.md"
     except Exception as e:
         return f"Warning: Failed to add VNDB info to SKILL.md: {e}"
@@ -107,3 +102,10 @@ def _remove_limit_file(code_skill_dir):
     limit_file = os.path.join(code_skill_dir, "limit.md")
     if os.path.exists(limit_file):
         os.remove(limit_file)
+
+
+def _append_text_to_file(path, text):
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(content + text)
