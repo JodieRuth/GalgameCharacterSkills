@@ -22,7 +22,7 @@ def run_generate_skills_task(
     config = build_llm_config(data)
 
     if request_data.resume_checkpoint_id:
-        ckpt_result = load_resumable_checkpoint(runtime.ckpt_manager, request_data.resume_checkpoint_id)
+        ckpt_result = load_resumable_checkpoint(runtime.checkpoint_gateway, request_data.resume_checkpoint_id)
         if not ckpt_result.get('success'):
             return ckpt_result
         ckpt = ckpt_result['checkpoint']
@@ -30,7 +30,7 @@ def run_generate_skills_task(
         request_data.apply_checkpoint(ckpt['input_params'])
         checkpoint_id = request_data.resume_checkpoint_id
 
-        llm_state = runtime.ckpt_manager.load_llm_state(checkpoint_id)
+        llm_state = runtime.checkpoint_gateway.load_llm_state(checkpoint_id)
         messages = llm_state.get('messages', [])
         all_results = llm_state.get('all_results', [])
         iteration = llm_state.get('iteration_count', 0)
@@ -38,7 +38,7 @@ def run_generate_skills_task(
 
         print(f"Resuming generate_skills: iteration {iteration}, {len(all_results)} results so far")
     else:
-        checkpoint_id = runtime.ckpt_manager.create_checkpoint(
+        checkpoint_id = runtime.checkpoint_gateway.create_checkpoint(
             task_type='generate_skills',
             input_params=request_data.to_checkpoint_input()
         )
@@ -69,7 +69,7 @@ def run_generate_skills_task(
                 llm_client=llm_interaction,
                 target_budget_tokens=target_budget_tokens,
                 checkpoint_id=checkpoint_id,
-                ckpt_manager=runtime.ckpt_manager,
+                ckpt_manager=runtime.checkpoint_gateway,
                 estimate_tokens=runtime.estimate_tokens
             )
             context_mode = "llm_compressed"
@@ -117,7 +117,7 @@ def run_generate_skills_task(
             request_data.output_language,
             request_data.vndb_data
         )
-        runtime.ckpt_manager.update_progress(checkpoint_id, total_steps=20, current_phase='tool_call_loop')
+        runtime.checkpoint_gateway.update_progress(checkpoint_id, total_steps=20, current_phase='tool_call_loop')
     else:
         _, tools = llm_interaction.generate_skills_folder_init(
             summaries_text,
@@ -129,17 +129,17 @@ def run_generate_skills_task(
     max_iterations = 20
     while iteration < max_iterations:
         iteration += 1
-        runtime.ckpt_manager.save_llm_state(
+        runtime.checkpoint_gateway.save_llm_state(
             checkpoint_id, messages=messages,
             iteration_count=iteration, all_results=all_results
         )
         response = llm_interaction.send_message(messages, tools, use_counter=False)
         if not response:
-            runtime.ckpt_manager.save_llm_state(
+            runtime.checkpoint_gateway.save_llm_state(
                 checkpoint_id, messages=messages,
                 last_response=None, iteration_count=iteration, all_results=all_results
             )
-            runtime.ckpt_manager.mark_failed(checkpoint_id, 'LLM交互失败')
+            runtime.checkpoint_gateway.mark_failed(checkpoint_id, 'LLM交互失败')
             return fail_result(
                 'LLM交互失败',
                 checkpoint_id=checkpoint_id,
@@ -170,7 +170,7 @@ def run_generate_skills_task(
                 "content": json.dumps({"success": True, "result": result})
             }
             messages.append(tool_response)
-        runtime.ckpt_manager.save_llm_state(
+        runtime.checkpoint_gateway.save_llm_state(
             checkpoint_id, messages=messages,
             last_response=response, iteration_count=iteration, all_results=all_results
         )
@@ -183,7 +183,7 @@ def run_generate_skills_task(
     copy_result = create_code_skill_copy(script_dir, request_data.role_name)
     if copy_result:
         all_results.append(copy_result)
-    runtime.ckpt_manager.mark_completed(checkpoint_id)
+    runtime.checkpoint_gateway.mark_completed(checkpoint_id)
     return ok_result(
         message=f'技能文件夹生成完成，共执行 {len(all_results)} 次文件写入',
         results=all_results,

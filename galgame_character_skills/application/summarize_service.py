@@ -133,7 +133,7 @@ def run_summarize_task(data, runtime):
 
     config = build_llm_config(data)
     if request_data.resume_checkpoint_id:
-        ckpt_result = load_resumable_checkpoint(runtime.ckpt_manager, request_data.resume_checkpoint_id)
+        ckpt_result = load_resumable_checkpoint(runtime.checkpoint_gateway, request_data.resume_checkpoint_id)
         if not ckpt_result.get('success'):
             return ckpt_result
         ckpt = ckpt_result['checkpoint']
@@ -147,7 +147,7 @@ def run_summarize_task(data, runtime):
         if not request_data.file_paths:
             return fail_result('请先选择文件')
 
-        checkpoint_id = runtime.ckpt_manager.create_checkpoint(
+        checkpoint_id = runtime.checkpoint_gateway.create_checkpoint(
             task_type='summarize',
             input_params=request_data.to_checkpoint_input()
         )
@@ -176,7 +176,7 @@ def run_summarize_task(data, runtime):
     runtime.storage_gateway.makedirs(summary_dir, exist_ok=True)
 
     if not request_data.resume_checkpoint_id:
-        runtime.ckpt_manager.update_progress(
+        runtime.checkpoint_gateway.update_progress(
             checkpoint_id,
             total_steps=len(current_slices),
             pending_items=list(range(len(current_slices)))
@@ -206,7 +206,7 @@ def run_summarize_task(data, runtime):
             executor.submit(
                 _process_single_slice,
                 task,
-                runtime.ckpt_manager,
+                runtime.checkpoint_gateway,
                 runtime.llm_gateway,
                 runtime.tool_gateway,
                 runtime.storage_gateway
@@ -243,7 +243,7 @@ def run_summarize_task(data, runtime):
         )
 
     if errors and len(summaries) == 0:
-        runtime.ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片全部失败')
+        runtime.checkpoint_gateway.mark_failed(checkpoint_id, f'{len(errors)} 个切片全部失败')
         return fail_result(
             f'归纳失败，{len(errors)} 个切片失败',
             slice_count=len(current_slices),
@@ -254,7 +254,7 @@ def run_summarize_task(data, runtime):
         )
 
     if errors:
-        runtime.ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片失败，可恢复继续处理')
+        runtime.checkpoint_gateway.mark_failed(checkpoint_id, f'{len(errors)} 个切片失败，可恢复继续处理')
         return ok_result(
             message=f'归纳部分完成，{len(errors)} 个切片失败，可通过任务列表继续',
             slice_count=len(current_slices),
@@ -264,7 +264,7 @@ def run_summarize_task(data, runtime):
             can_resume=True
         )
 
-    runtime.ckpt_manager.mark_completed(checkpoint_id)
+    runtime.checkpoint_gateway.mark_completed(checkpoint_id)
     return ok_result(
         message='归纳完成',
         slice_count=len(current_slices),

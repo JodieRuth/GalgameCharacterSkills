@@ -17,7 +17,7 @@ def run_generate_character_card_task(
     config = build_llm_config(data)
 
     if request_data.resume_checkpoint_id:
-        ckpt_result = load_resumable_checkpoint(runtime.ckpt_manager, request_data.resume_checkpoint_id)
+        ckpt_result = load_resumable_checkpoint(runtime.checkpoint_gateway, request_data.resume_checkpoint_id)
         if not ckpt_result.get('success'):
             return ckpt_result
         ckpt = ckpt_result['checkpoint']
@@ -25,14 +25,14 @@ def run_generate_character_card_task(
         request_data.apply_checkpoint(ckpt['input_params'])
         checkpoint_id = request_data.resume_checkpoint_id
 
-        llm_state = runtime.ckpt_manager.load_llm_state(checkpoint_id)
+        llm_state = runtime.checkpoint_gateway.load_llm_state(checkpoint_id)
         fields_data = llm_state.get('fields_data', {})
         messages = llm_state.get('messages', [])
         iteration_count = llm_state.get('iteration_count', 0)
 
         print(f"Resuming generate_chara_card: iteration {iteration_count}, fields: {list(fields_data.keys())}")
     else:
-        checkpoint_id = runtime.ckpt_manager.create_checkpoint(
+        checkpoint_id = runtime.checkpoint_gateway.create_checkpoint(
             task_type='generate_chara_card',
             input_params=request_data.to_checkpoint_input()
         )
@@ -75,7 +75,7 @@ def run_generate_character_card_task(
                 llm_client=llm_interaction,
                 target_budget_tokens=target_budget_tokens,
                 checkpoint_id=checkpoint_id,
-                ckpt_manager=runtime.ckpt_manager,
+                ckpt_manager=runtime.checkpoint_gateway,
                 estimate_tokens=runtime.estimate_tokens
             )
             all_character_analyses = compressed_analyses
@@ -104,7 +104,7 @@ def run_generate_character_card_task(
     image_path = None
     if request_data.vndb_data_raw and request_data.vndb_data_raw.get('image_url'):
         image_ext = os.path.splitext(request_data.vndb_data_raw['image_url'])[1] or '.jpg'
-        ckpt_temp_dir = runtime.ckpt_manager.get_temp_dir(checkpoint_id)
+        ckpt_temp_dir = runtime.checkpoint_gateway.get_temp_dir(checkpoint_id)
         image_path = os.path.join(ckpt_temp_dir, f"{request_data.role_name}_vndb{image_ext}")
         if runtime.storage_gateway.exists(image_path):
             print(f"VNDB image already exists: {image_path}")
@@ -129,7 +129,7 @@ def run_generate_character_card_task(
     )
 
     if result.get('success'):
-        runtime.ckpt_manager.mark_completed(checkpoint_id, final_output_path=json_output_path)
+        runtime.checkpoint_gateway.mark_completed(checkpoint_id, final_output_path=json_output_path)
         try:
             chara_card_json = runtime.storage_gateway.read_json(json_output_path)
         except Exception as e:
@@ -166,7 +166,7 @@ def run_generate_character_card_task(
                             img = background
                     else:
                         img = img.convert('RGB')
-                    temp_png = os.path.join(runtime.ckpt_manager.get_temp_dir(checkpoint_id), f"{request_data.role_name}_temp.png")
+                    temp_png = os.path.join(runtime.checkpoint_gateway.get_temp_dir(checkpoint_id), f"{request_data.role_name}_temp.png")
                     img.save(temp_png, 'PNG', optimize=True)
                     print(f"Converted image to PNG: {temp_png}")
                     if runtime.embed_json_in_png(chara_card_json, temp_png, png_output_path):
@@ -211,7 +211,7 @@ def run_generate_character_card_task(
         return response_data
 
     if result.get('can_resume'):
-        runtime.ckpt_manager.mark_failed(checkpoint_id, result.get('message', '生成失败'))
+        runtime.checkpoint_gateway.mark_failed(checkpoint_id, result.get('message', '生成失败'))
         return fail_result(
             result.get('message', '生成失败'),
             checkpoint_id=checkpoint_id,
