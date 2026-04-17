@@ -6,6 +6,11 @@ from services.checkpoint_utils import load_resumable_checkpoint
 from services.summary_discovery import find_role_summary_markdown_files
 from services.request_config import build_llm_config
 from services.skills_postprocess import append_vndb_info_to_skill_md, create_code_skill_copy
+from services.skills_context_builder import (
+    build_full_skill_generation_context,
+    build_prioritized_skill_generation_context,
+)
+from services.compression_service import compress_summary_files_with_llm
 
 
 def run_generate_skills_task(
@@ -13,12 +18,9 @@ def run_generate_skills_task(
     ckpt_manager,
     clean_vndb_data,
     get_base_dir,
-    build_full_context,
     estimate_tokens,
     get_model_context_limit,
     calculate_compression_threshold,
-    compress_with_llm,
-    build_prioritized_context,
     build_llm_client
 ):
     role_name = data.get('role_name', '')
@@ -67,7 +69,7 @@ def run_generate_skills_task(
     summary_files = find_role_summary_markdown_files(script_dir, role_name)
     if not summary_files:
         return {'success': False, 'message': f'未找到角色 "{role_name}" 的归纳文件，请先完成归纳'}
-    raw_full_text = build_full_context(summary_files)
+    raw_full_text = build_full_skill_generation_context(summary_files)
     raw_total_chars = len(raw_full_text)
     raw_estimated_tokens = estimate_tokens(raw_full_text)
     model_name = data.get('modelname', '')
@@ -82,12 +84,19 @@ def run_generate_skills_task(
         if compression_mode == 'llm':
             print("Using LLM compression")
             llm_interaction = build_llm_client(config)
-            summaries_text = compress_with_llm(summary_files, llm_interaction, target_budget_tokens, checkpoint_id=checkpoint_id)
+            summaries_text = compress_summary_files_with_llm(
+                summary_files=summary_files,
+                llm_client=llm_interaction,
+                target_budget_tokens=target_budget_tokens,
+                checkpoint_id=checkpoint_id,
+                ckpt_manager=ckpt_manager,
+                estimate_tokens=estimate_tokens
+            )
             context_mode = "llm_compressed"
         else:
             print("Using original compression")
             target_budget_chars = target_budget_tokens * 2
-            summaries_text = build_prioritized_context(
+            summaries_text = build_prioritized_skill_generation_context(
                 summary_files,
                 target_total_chars=target_budget_chars
             )

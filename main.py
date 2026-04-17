@@ -297,12 +297,9 @@ def generate_skills_folder(data):
         ckpt_manager=ckpt_manager,
         clean_vndb_data=clean_vndb_data,
         get_base_dir=get_base_dir,
-        build_full_context=_build_full_skill_generation_context,
         estimate_tokens=_estimate_tokens_from_text,
         get_model_context_limit=get_model_context_limit,
         calculate_compression_threshold=calculate_compression_threshold,
-        compress_with_llm=_compress_with_llm,
-        build_prioritized_context=_build_prioritized_skill_generation_context,
         build_llm_client=build_llm_client
     )
     return jsonify(result)
