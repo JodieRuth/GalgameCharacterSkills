@@ -1,6 +1,4 @@
-import webbrowser
 import threading
-import time
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 
@@ -29,6 +27,7 @@ from services.path_utils import get_base_dir, get_resource_path
 from services.llm_factory import build_llm_client
 from services.token_utils import estimate_tokens_from_text
 from services.llm_budget import get_model_context_limit
+from services.app_runtime import open_browser, configure_werkzeug_logging
 
 
 app = Flask(__name__, template_folder=get_resource_path('utils'))
@@ -38,18 +37,7 @@ file_processor = FileProcessor()
 ckpt_manager = CheckpointManager()
 
 R18_TRAITS = load_r18_traits(get_base_dir())
-
-class NoRequestFilter:
-    def filter(self, record):
-        return not (record.getMessage().startswith('127.0.0.1') and 'HTTP' in record.getMessage())
-
-import logging
-log = logging.getLogger('werkzeug')
-log.addFilter(NoRequestFilter())
-
-def open_browser():
-    time.sleep(0.5)
-    webbrowser.open('http://127.0.0.1:5000')
+configure_werkzeug_logging()
 
 
 def _json_body():
