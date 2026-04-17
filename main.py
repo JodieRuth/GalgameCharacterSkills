@@ -15,7 +15,6 @@ import litellm
 
 from utils.llm_interaction import LLMInteraction
 from utils.file_processor import FileProcessor
-from utils.tool_handler import ToolHandler
 from utils.checkpoint_manager import CheckpointManager
 from services.summarize_service import run_summarize_task
 from services.skills_service import run_generate_skills_task
@@ -69,16 +68,6 @@ def clean_vndb_data(vndb_data):
         return cleaned
     return vndb_data
 
-def _try_resume_checkpoint(resume_checkpoint_id):
-    if not resume_checkpoint_id:
-        return None, None
-    ckpt = ckpt_manager.load_checkpoint(resume_checkpoint_id)
-    if not ckpt:
-        return None, jsonify({'success': False, 'message': f'未找到Checkpoint: {resume_checkpoint_id}'})
-    if ckpt['status'] == 'completed':
-        return None, jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
-    return ckpt, None
-
 def get_base_dir():
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
@@ -97,7 +86,6 @@ CORS(app)
 
 file_processor = FileProcessor()
 ckpt_manager = CheckpointManager()
-current_slices = []
 
 R18_TRAITS = load_r18_traits()
 
@@ -723,10 +711,6 @@ def build_llm_client(config=None):
     return client
 
 
-def get_llm_client():
-    data = request.json if request.is_json else {}
-    return build_llm_client(data)
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -864,13 +848,12 @@ def slice_file():
         return jsonify({'success': False, 'message': '请先选择文件'})
     
     try:
-        global current_slices
-        current_slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
+        slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
         file_count = len(file_paths)
         return jsonify({
             'success': True,
-            'message': f'已合并 {file_count} 个文件并切片，共 {len(current_slices)} 个切片',
-            'slice_count': len(current_slices),
+            'message': f'已合并 {file_count} 个文件并切片，共 {len(slices)} 个切片',
+            'slice_count': len(slices),
             'file_count': file_count
         })
     except Exception as e:
