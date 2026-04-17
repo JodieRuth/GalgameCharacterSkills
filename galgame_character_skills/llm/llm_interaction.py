@@ -73,13 +73,16 @@ def _format_vndb_section(vndb_data, title, bullet="-"):
     return f"\n\n{title}\n" + "\n".join(entries) + "\n"
 
 class LLMInteraction:
-    def __init__(self):
+    _runtime_cls = LLMRequestRuntime
+
+    def __init__(self, tool_gateway=None, transport=None, runtime=None):
         self.baseurl = ""
         self.modelname = ""
         self.apikey = ""
         self.max_retries = 3
-        self.tool_gateway = DefaultToolGateway()
-        self.transport = CompletionTransport()
+        self.tool_gateway = tool_gateway or DefaultToolGateway()
+        self.transport = transport or CompletionTransport()
+        self.runtime = runtime or self._runtime_cls
     
     def set_config(self, baseurl, modelname, apikey, max_retries=None):
         self.baseurl = baseurl
@@ -90,7 +93,7 @@ class LLMInteraction:
     
     @classmethod
     def set_total_requests(cls, total):
-        LLMRequestRuntime.set_total_requests(total)
+        cls._runtime_cls.set_total_requests(total)
 
     def _normalize_model_name(self):
         model = self.modelname
@@ -132,7 +135,7 @@ class LLMInteraction:
         return kwargs
 
     def _log_request_start(self, model, messages, tools, use_counter):
-        LLMRequestRuntime.log_request_start(
+        self.runtime.log_request_start(
             model=model,
             baseurl=self.baseurl,
             apikey=self.apikey,
@@ -142,13 +145,13 @@ class LLMInteraction:
         )
 
     def _log_request_success(self, use_counter):
-        LLMRequestRuntime.log_request_success(use_counter=use_counter)
+        self.runtime.log_request_success(use_counter=use_counter)
 
     def _log_response_preview(self, response):
-        LLMRequestRuntime.log_response_preview(response)
+        self.runtime.log_response_preview(response)
 
     def _log_request_failed(self, use_counter):
-        LLMRequestRuntime.log_request_failed(use_counter=use_counter)
+        self.runtime.log_request_failed(use_counter=use_counter)
     
     def send_message(self, messages, tools=None, max_retries=None, use_counter=True):
         if max_retries is None:
