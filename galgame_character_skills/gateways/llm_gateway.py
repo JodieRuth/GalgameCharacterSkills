@@ -1,5 +1,5 @@
 from ..utils.llm_factory import build_llm_client
-from ..utils.llm_interaction import LLMInteraction
+from ..llm import LLMInteraction
 
 
 class LLMGateway:

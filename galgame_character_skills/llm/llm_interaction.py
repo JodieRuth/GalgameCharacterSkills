@@ -4,7 +4,7 @@ import sys
 import os
 from datetime import datetime
 from ..gateways.tool_gateway import DefaultToolGateway
-from .prompt_builders import (
+from ..utils.prompt_builders import (
     build_character_card_language_instruction,
     build_character_card_system_prompt,
     build_character_card_user_prompt,
