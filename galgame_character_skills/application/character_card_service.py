@@ -6,6 +6,7 @@ from ..utils.summary_discovery import find_role_analysis_summary_file
 from ..utils.request_config import build_llm_config
 from ..utils.llm_budget import get_model_context_limit, calculate_compression_threshold
 from ..utils.compression_service import compress_analyses_with_llm
+from ..domain import GenerateCharacterCardRequest
 
 
 def run_generate_character_card_task(
@@ -18,29 +19,16 @@ def run_generate_character_card_task(
     download_vndb_image,
     embed_json_in_png
 ):
-    role_name = data.get('role_name', '')
-    creator = data.get('creator', '')
-    vndb_data_raw = data.get('vndb_data')
-    vndb_data = clean_vndb_data(vndb_data_raw)
-    output_language = data.get('output_language', '')
-    compression_mode = data.get('compression_mode', 'original')
-    force_no_compression = data.get('force_no_compression', False)
-    resume_checkpoint_id = data.get('resume_checkpoint_id')
+    request_data = GenerateCharacterCardRequest.from_payload(data, clean_vndb_data)
     config = build_llm_config(data)
 
-    if resume_checkpoint_id:
-        ckpt, error = load_resumable_checkpoint(ckpt_manager, resume_checkpoint_id)
+    if request_data.resume_checkpoint_id:
+        ckpt, error = load_resumable_checkpoint(ckpt_manager, request_data.resume_checkpoint_id)
         if error:
             return error
 
-        role_name = ckpt['input_params'].get('role_name', role_name)
-        creator = ckpt['input_params'].get('creator', creator)
-        vndb_data = ckpt['input_params'].get('vndb_data', vndb_data)
-        vndb_data_raw = ckpt['input_params'].get('vndb_data_raw', vndb_data_raw)
-        output_language = ckpt['input_params'].get('output_language', output_language)
-        compression_mode = ckpt['input_params'].get('compression_mode', compression_mode)
-        force_no_compression = ckpt['input_params'].get('force_no_compression', force_no_compression)
-        checkpoint_id = resume_checkpoint_id
+        request_data.apply_checkpoint(ckpt['input_params'])
+        checkpoint_id = request_data.resume_checkpoint_id
 
         llm_state = ckpt_manager.load_llm_state(checkpoint_id)
         fields_data = llm_state.get('fields_data', {})
@@ -51,25 +39,17 @@ def run_generate_character_card_task(
     else:
         checkpoint_id = ckpt_manager.create_checkpoint(
             task_type='generate_chara_card',
-            input_params={
-                'role_name': role_name,
-                'creator': creator,
-                'vndb_data': vndb_data,
-                'vndb_data_raw': vndb_data_raw,
-                'output_language': output_language,
-                'compression_mode': compression_mode,
-                'force_no_compression': force_no_compression
-            }
+            input_params=request_data.to_checkpoint_input()
         )
         fields_data = {}
         messages = []
         iteration_count = 0
 
     script_dir = get_base_dir()
-    analysis_file = find_role_analysis_summary_file(script_dir, role_name)
+    analysis_file = find_role_analysis_summary_file(script_dir, request_data.role_name)
 
     if not analysis_file:
-        return {'success': False, 'message': f'未找到角色 "{role_name}" 的分析文件，请先完成归纳'}
+        return {'success': False, 'message': f'未找到角色 "{request_data.role_name}" 的分析文件，请先完成归纳'}
 
     try:
         with open(analysis_file, 'r', encoding='utf-8') as f:
@@ -85,16 +65,15 @@ def run_generate_character_card_task(
 
     analyses_text = json.dumps(all_character_analyses, ensure_ascii=False)
     raw_estimated_tokens = estimate_tokens(analyses_text)
-    model_name = data.get('modelname', '')
-    context_limit = get_model_context_limit(model_name)
+    context_limit = get_model_context_limit(request_data.model_name)
     context_limit_tokens = calculate_compression_threshold(context_limit)
     target_budget_tokens = context_limit_tokens
 
-    print(f"Model: {model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
-    print(f"Compression mode: {compression_mode}, Force no compression: {force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
+    print(f"Model: {request_data.model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
+    print(f"Compression mode: {request_data.compression_mode}, Force no compression: {request_data.force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
 
-    if not force_no_compression and raw_estimated_tokens > context_limit_tokens:
-        if compression_mode == 'llm':
+    if not request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
+        if request_data.compression_mode == 'llm':
             print("Using LLM compression for analyses")
             llm_interaction = build_llm_client(config)
             compressed_analyses = compress_analyses_with_llm(
@@ -117,42 +96,42 @@ def run_generate_character_card_task(
         compressed_tokens = estimate_tokens(compressed_text)
         print(f"Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
     else:
-        if force_no_compression and raw_estimated_tokens > context_limit_tokens:
+        if request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
             context_mode = "full_forced"
             print("Force no compression enabled, using full context despite exceeding limit")
         else:
             context_mode = "full"
         print(f"No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})")
 
-    output_dir = os.path.join(script_dir, f"{role_name}-character-card")
+    output_dir = os.path.join(script_dir, f"{request_data.role_name}-character-card")
     os.makedirs(output_dir, exist_ok=True)
-    json_output_path = os.path.join(output_dir, f"{role_name}_chara_card.json")
+    json_output_path = os.path.join(output_dir, f"{request_data.role_name}_chara_card.json")
 
     image_path = None
-    if vndb_data_raw and vndb_data_raw.get('image_url'):
-        image_ext = os.path.splitext(vndb_data_raw['image_url'])[1] or '.jpg'
+    if request_data.vndb_data_raw and request_data.vndb_data_raw.get('image_url'):
+        image_ext = os.path.splitext(request_data.vndb_data_raw['image_url'])[1] or '.jpg'
         ckpt_temp_dir = ckpt_manager.get_temp_dir(checkpoint_id)
-        image_path = os.path.join(ckpt_temp_dir, f"{role_name}_vndb{image_ext}")
+        image_path = os.path.join(ckpt_temp_dir, f"{request_data.role_name}_vndb{image_ext}")
         if os.path.exists(image_path):
             print(f"VNDB image already exists: {image_path}")
-        elif download_vndb_image(vndb_data_raw['image_url'], image_path):
+        elif download_vndb_image(request_data.vndb_data_raw['image_url'], image_path):
             print(f"Downloaded VNDB image to: {image_path}")
         else:
             image_path = None
 
     llm_interaction = build_llm_client(config)
     result = llm_interaction.generate_character_card_with_tools(
-        role_name,
+        request_data.role_name,
         all_character_analyses,
         all_lorebook_entries,
         json_output_path,
-        creator,
-        vndb_data,
-        output_language,
+        request_data.creator,
+        request_data.vndb_data,
+        request_data.output_language,
         checkpoint_id=checkpoint_id,
-        ckpt_messages=messages if resume_checkpoint_id else None,
-        ckpt_fields_data=fields_data if resume_checkpoint_id else None,
-        ckpt_iteration_count=iteration_count if resume_checkpoint_id else None
+        ckpt_messages=messages if request_data.resume_checkpoint_id else None,
+        ckpt_fields_data=fields_data if request_data.resume_checkpoint_id else None,
+        ckpt_iteration_count=iteration_count if request_data.resume_checkpoint_id else None
     )
 
     if result.get('success'):
@@ -174,7 +153,7 @@ def run_generate_character_card_task(
         png_output_path = None
         conversion_error = None
         if image_path and os.path.exists(image_path):
-            png_output_path = os.path.join(output_dir, f"{role_name}_chara_card.png")
+            png_output_path = os.path.join(output_dir, f"{request_data.role_name}_chara_card.png")
 
             if image_path.lower().endswith('.png'):
                 if embed_json_in_png(chara_card_json, image_path, png_output_path):
@@ -195,7 +174,7 @@ def run_generate_character_card_task(
                             img = background
                     else:
                         img = img.convert('RGB')
-                    temp_png = os.path.join(ckpt_manager.get_temp_dir(checkpoint_id), f"{role_name}_temp.png")
+                    temp_png = os.path.join(ckpt_manager.get_temp_dir(checkpoint_id), f"{request_data.role_name}_temp.png")
                     img.save(temp_png, 'PNG', optimize=True)
                     print(f"Converted image to PNG: {temp_png}")
                     if embed_json_in_png(chara_card_json, temp_png, png_output_path):
@@ -214,7 +193,7 @@ def run_generate_character_card_task(
                     print(conversion_error)
                     png_output_path = None
 
-            if image_path and os.path.exists(image_path) and not resume_checkpoint_id:
+            if image_path and os.path.exists(image_path) and not request_data.resume_checkpoint_id:
                 try:
                     os.remove(image_path)
                     print(f"Cleaned up VNDB image: {image_path}")

@@ -8,6 +8,7 @@ from ..utils.tool_handler import ToolHandler
 from ..utils.checkpoint_utils import load_resumable_checkpoint
 from ..utils.request_config import build_llm_config
 from ..utils.input_normalization import extract_file_paths
+from ..domain import SummarizeRequest
 
 
 def _process_single_slice(args, ckpt_manager):
@@ -136,61 +137,35 @@ def _process_single_slice(args, ckpt_manager):
 
 
 def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
-    role_name = data.get('role_name', '')
-    instruction = data.get('instruction', '')
-    concurrency = data.get('concurrency', 1)
-    mode = data.get('mode', 'skills')
-    resume_checkpoint_id = data.get('resume_checkpoint_id')
+    request_data = SummarizeRequest.from_payload(data, clean_vndb_data, extract_file_paths)
 
-    file_paths = extract_file_paths(data)
-
-    if not role_name:
+    if not request_data.role_name:
         return {'success': False, 'message': '请输入角色名称'}
 
     config = build_llm_config(data)
-    output_language = data.get('output_language', '')
-    vndb_data = clean_vndb_data(data.get('vndb_data'))
-    slice_size_k = data.get('slice_size_k', 50)
-
-    if resume_checkpoint_id:
-        ckpt, error = load_resumable_checkpoint(ckpt_manager, resume_checkpoint_id)
+    if request_data.resume_checkpoint_id:
+        ckpt, error = load_resumable_checkpoint(ckpt_manager, request_data.resume_checkpoint_id)
         if error:
             return error
 
-        role_name = ckpt['input_params'].get('role_name', role_name)
-        instruction = ckpt['input_params'].get('instruction', instruction)
-        output_language = ckpt['input_params'].get('output_language', output_language)
-        mode = ckpt['input_params'].get('mode', mode)
-        vndb_data = ckpt['input_params'].get('vndb_data', vndb_data)
-        slice_size_k = ckpt['input_params'].get('slice_size_k', slice_size_k)
-        file_paths = ckpt['input_params'].get('file_paths', file_paths)
-        concurrency = ckpt['input_params'].get('concurrency', concurrency)
-        checkpoint_id = resume_checkpoint_id
+        request_data.apply_checkpoint(ckpt['input_params'])
+        checkpoint_id = request_data.resume_checkpoint_id
 
         completed_indices = set(ckpt['progress'].get('completed_items', []))
         print(f"Resuming summarize: {len(completed_indices)}/{ckpt['progress'].get('total_steps', '?')} slices already done")
     else:
-        if not file_paths:
+        if not request_data.file_paths:
             return {'success': False, 'message': '请先选择文件'}
 
         checkpoint_id = ckpt_manager.create_checkpoint(
             task_type='summarize',
-            input_params={
-                'role_name': role_name,
-                'instruction': instruction,
-                'output_language': output_language,
-                'mode': mode,
-                'vndb_data': vndb_data,
-                'slice_size_k': slice_size_k,
-                'file_paths': file_paths,
-                'concurrency': concurrency
-            }
+            input_params=request_data.to_checkpoint_input()
         )
 
-    if not file_paths:
+    if not request_data.file_paths:
         return {'success': False, 'message': '请先选择文件'}
 
-    current_slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
+    current_slices = file_processor.slice_multiple_files(request_data.file_paths, request_data.slice_size_k)
     LLMInteraction.set_total_requests(len(current_slices))
 
     summaries = []
@@ -199,18 +174,18 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
     all_character_analyses = []
     all_lorebook_entries = []
 
-    if len(file_paths) == 1:
-        file_name = os.path.basename(file_paths[0])
+    if len(request_data.file_paths) == 1:
+        file_name = os.path.basename(request_data.file_paths[0])
         name, ext = os.path.splitext(file_name)
-        summary_dir = os.path.join(os.path.dirname(file_paths[0]), f"{name}_summaries")
+        summary_dir = os.path.join(os.path.dirname(request_data.file_paths[0]), f"{name}_summaries")
     else:
-        first_dir = os.path.dirname(file_paths[0])
-        name = os.path.basename(file_paths[0])
+        first_dir = os.path.dirname(request_data.file_paths[0])
+        name = os.path.basename(request_data.file_paths[0])
         name = os.path.splitext(name)[0]
         summary_dir = os.path.join(first_dir, f"{name}_merged_summaries")
     os.makedirs(summary_dir, exist_ok=True)
 
-    if not resume_checkpoint_id:
+    if not request_data.resume_checkpoint_id:
         ckpt_manager.update_progress(
             checkpoint_id,
             total_steps=len(current_slices),
@@ -219,13 +194,24 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
 
     tasks = []
     for i, slice_content in enumerate(current_slices):
-        if mode == 'chara_card':
-            output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{role_name}.json")
+        if request_data.mode == 'chara_card':
+            output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{request_data.role_name}.json")
         else:
-            output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{role_name}.md")
-        tasks.append((i, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id))
+            output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{request_data.role_name}.md")
+        tasks.append((
+            i,
+            slice_content,
+            request_data.role_name,
+            request_data.instruction,
+            output_file_path,
+            config,
+            request_data.output_language,
+            request_data.mode,
+            request_data.vndb_data,
+            checkpoint_id
+        ))
 
-    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+    with ThreadPoolExecutor(max_workers=request_data.concurrency) as executor:
         future_to_task = {executor.submit(_process_single_slice, task, ckpt_manager): task for task in tasks}
 
         for future in as_completed(future_to_task):
@@ -244,8 +230,8 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
                 task = future_to_task[future]
                 errors.append(f'切片 {task[0] + 1} 处理异常: {str(e)}')
 
-    if mode == 'chara_card':
-        analysis_summary_path = os.path.join(summary_dir, f"{role_name}_analysis_summary.json")
+    if request_data.mode == 'chara_card':
+        analysis_summary_path = os.path.join(summary_dir, f"{request_data.role_name}_analysis_summary.json")
         with open(analysis_summary_path, 'w', encoding='utf-8') as f:
             json.dump({
                 'character_analyses': all_character_analyses,
