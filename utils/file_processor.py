@@ -39,23 +39,6 @@ class FileProcessor:
         slice_size = slice_size_k * 1000
         return (token_count // slice_size) + 1
     
-    def slice_file(self, file_path, slice_size_k=50):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            token_count = self.calculate_tokens(file_path)
-            slice_count = self.calculate_slices(token_count, slice_size_k)
-            lines_per_slice = len(lines) // slice_count
-            slices = []
-            for i in range(slice_count):
-                start_line = i * lines_per_slice
-                end_line = (i + 1) * lines_per_slice if i < slice_count - 1 else len(lines)
-                slice_content = ''.join(lines[start_line:end_line])
-                slices.append(slice_content)
-            return slices
-        except Exception as e:
-            return []
-    
     def slice_multiple_files(self, file_paths, slice_size_k=50):
         try:
             all_lines = []
@@ -78,11 +61,4 @@ class FileProcessor:
             return slices
         except Exception as e:
             return []
-    
-    def read_file_first_1000_lines(self, file_path):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()[:1000]
-            return ''.join(lines)
-        except Exception as e:
-            return ""
+

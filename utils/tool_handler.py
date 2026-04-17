@@ -1,7 +1,6 @@
 import os
 import json
 import re
-from datetime import datetime
 
 class ToolHandler:
     @staticmethod
@@ -15,18 +14,6 @@ class ToolHandler:
             return f"File written successfully: {file_path}"
         except Exception as e:
             return f"File write failed: {str(e)}"
-    
-    @staticmethod
-    def _find_file_recursive(base_dir, filename):
-        direct_path = os.path.join(base_dir, filename)
-        if os.path.exists(direct_path):
-            return direct_path
-        
-        for root, dirs, files in os.walk(base_dir):
-            if filename in files:
-                return os.path.join(root, filename)
-        
-        return None
     
     @staticmethod
     def handle_tool_call(tool_call):

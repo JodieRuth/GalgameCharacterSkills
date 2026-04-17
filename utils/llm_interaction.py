@@ -2,8 +2,54 @@ import litellm
 import json
 import sys
 import os
+from datetime import datetime
 
-litellm.enable_system_proxy = True
+LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
+
+def _format_vndb_section(vndb_data, title, bullet="-"):
+    if not vndb_data:
+        return ""
+
+    entries = []
+    field_map = [
+        ("name", "Name"),
+        ("original_name", "Original Name"),
+        ("aliases", "Aliases"),
+        ("description", "Description"),
+        ("age", "Age"),
+        ("birthday", "Birthday"),
+        ("blood_type", "Blood Type"),
+        ("height", "Height"),
+        ("weight", "Weight"),
+        ("traits", "Traits"),
+        ("vns", "Visual Novels"),
+    ]
+
+    for key, label in field_map:
+        value = vndb_data.get(key)
+        if not value:
+            continue
+        if key == "aliases" and isinstance(value, list):
+            value = ", ".join(value)
+        elif key == "traits" and isinstance(value, list):
+            value = ", ".join(value)
+        elif key == "vns" and isinstance(value, list):
+            value = ", ".join(value[:3])
+        elif key == "height":
+            value = f"{value}cm"
+        elif key == "weight":
+            value = f"{value}kg"
+        prefix = f"{bullet} " if bullet else ""
+        entries.append(f"{prefix}{label}: {value}")
+
+    if vndb_data.get('bust') and vndb_data.get('waist') and vndb_data.get('hips'):
+        prefix = f"{bullet} " if bullet else ""
+        entries.append(f"{prefix}Measurements: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm")
+
+    if not entries:
+        return ""
+
+    return f"\n\n{title}\n" + "\n".join(entries) + "\n"
 
 class LLMInteraction:
     _request_count = 0
@@ -13,24 +59,25 @@ class LLMInteraction:
         self.baseurl = ""
         self.modelname = ""
         self.apikey = ""
-        self.python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        self.max_retries = 3
     
-    def set_config(self, baseurl, modelname, apikey):
+    def set_config(self, baseurl, modelname, apikey, max_retries=None):
         self.baseurl = baseurl
         self.modelname = modelname
         self.apikey = apikey
-        litellm.api_key = apikey
-        if baseurl:
-            litellm.api_base = baseurl
+        if max_retries is not None and max_retries > 0:
+            self.max_retries = max_retries
     
     @classmethod
     def set_total_requests(cls, total):
         cls._total_requests = total
         cls._request_count = 0
     
-    def send_message(self, messages, tools=None, max_retries=3, use_counter=True):
+    def send_message(self, messages, tools=None, max_retries=None, use_counter=True):
         import time
         
+        if max_retries is None:
+            max_retries = self.max_retries
         model = self.modelname
         baseurl = self.baseurl.lower() if self.baseurl else ''
         
@@ -126,70 +173,6 @@ class LLMInteraction:
                 return choice.message.tool_calls
         return None
     
-    def generate_cleanup_script(self, file_content, source_file_path, output_file_path):
-        file_name = os.path.basename(source_file_path)
-        name, ext = os.path.splitext(file_name)
-        script_file_path = os.path.join(os.path.dirname(source_file_path), f"{name}_cleanup.py")
-        
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "write_file",
-                    "description": "Write file to local disk",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "File path"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "File content"
-                            }
-                        },
-                        "required": ["file_path", "content"]
-                    }
-                }
-            }
-        ]
-        
-        system_prompt = f"""You are a professional text processing assistant.
-Your task is to generate a Python cleanup and organization script based on the provided text format.
-
-CRITICAL REQUIREMENTS:
-1. Target Python version: {self.python_version}
-2. Source file path: {source_file_path}
-3. Output file path: {output_file_path}
-4. Script file path (MUST save to this exact path): {script_file_path}
-5. You MUST ONLY use Python's native text processing capabilities (str, re, os, sys, io, pathlib)
-6. You are FORBIDDEN from using any external libraries (no pandas, no numpy, no third-party packages)
-7. The script should read from the source file and write the cleaned content to the output file
-8. Use only built-in Python modules for file I/O and text processing
-
-The script should:
-- Read the entire source file
-- Clean and organize the content based on its format
-- Handle encoding properly (UTF-8)
-- Write the cleaned content to the specified output path
-- Include error handling
-
-IMPORTANT: Use the write_file tool to save the generated script to EXACTLY this path: {script_file_path}"""
-        
-        messages = [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": f"Please generate a Python cleanup script based on the following text format (first 1000 lines):\n{file_content}"
-            }
-        ]
-        
-        return self.send_message(messages, tools), script_file_path
-    
     def summarize_content(self, content, role_name, instruction, output_file_path, output_language="", vndb_data=None):
         tools = [
             {
@@ -284,8 +267,7 @@ DO NOT:
 Additional instructions: {instruction}"""
 
         if output_language:
-            lang_names = {"zh": "中文", "en": "English", "ja": "日本語"}
-            lang_name = lang_names.get(output_language, output_language)
+            lang_name = LANG_NAMES.get(output_language, output_language)
             system_prompt += f"""
 
 ## OUTPUT LANGUAGE
@@ -295,46 +277,7 @@ You MUST write ALL content in {lang_name}.
 ALL output must be in {lang_name}, regardless of the source text language."""
 
         if vndb_data:
-            vndb_section = "\n\n## VNDB REFERENCE DATA (Use as authoritative source for basic info):\n"
-            if vndb_data.get('name'):
-                vndb_section += f"- Name: {vndb_data['name']}\n"
-            if vndb_data.get('original_name'):
-                vndb_section += f"- Original Name: {vndb_data['original_name']}\n"
-            if vndb_data.get('aliases'):
-                vndb_section += f"- Aliases: {', '.join(vndb_data['aliases'])}\n"
-            if vndb_data.get('description'):
-                vndb_section += f"- Description: {vndb_data['description']}\n"
-            if vndb_data.get('age'):
-                vndb_section += f"- Age: {vndb_data['age']}\n"
-            if vndb_data.get('birthday'):
-                vndb_section += f"- Birthday: {vndb_data['birthday']}\n"
-            if vndb_data.get('blood_type'):
-                vndb_section += f"- Blood Type: {vndb_data['blood_type']}\n"
-            if vndb_data.get('height'):
-                vndb_section += f"- Height: {vndb_data['height']}cm\n"
-            if vndb_data.get('weight'):
-                vndb_section += f"- Weight: {vndb_data['weight']}kg\n"
-            if vndb_data.get('bust') and vndb_data.get('waist') and vndb_data.get('hips'):
-                vndb_section += f"- Measurements: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm\n"
-            if vndb_data.get('hair'):
-                vndb_section += f"- Hair: {vndb_data['hair']}\n"
-            if vndb_data.get('eyes'):
-                vndb_section += f"- Eyes: {vndb_data['eyes']}\n"
-            if vndb_data.get('body'):
-                vndb_section += f"- Body Type: {vndb_data['body']}\n"
-            if vndb_data.get('clothes'):
-                vndb_section += f"- Clothes: {vndb_data['clothes']}\n"
-            if vndb_data.get('items'):
-                vndb_section += f"- Items: {vndb_data['items']}\n"
-            if vndb_data.get('role'):
-                vndb_section += f"- Role: {vndb_data['role']}\n"
-            if vndb_data.get('voiced_by'):
-                vndb_section += f"- Voiced by: {vndb_data['voiced_by']}\n"
-            if vndb_data.get('traits'):
-                vndb_section += f"- Traits: {', '.join(vndb_data['traits'])}\n"
-            if vndb_data.get('vns'):
-                games = vndb_data['vns'][:3]
-                vndb_section += f"- Visual Novels: {', '.join(games)}\n"
+            vndb_section = _format_vndb_section(vndb_data, "## VNDB Character Information")
             system_prompt += vndb_section
 
         messages = [
@@ -517,51 +460,11 @@ You MUST write ALL content in the same language as the source text.
 Additional instructions: {instruction}"""
 
         if vndb_data:
-            vndb_section = "\n\n## VNDB REFERENCE DATA (HIGHEST PRIORITY - Use these values as authoritative source for character appearance and basic info):\n"
-            if vndb_data.get('name'):
-                vndb_section += f"- Name: {vndb_data['name']}\n"
-            if vndb_data.get('original_name'):
-                vndb_section += f"- Original Name: {vndb_data['original_name']}\n"
-            if vndb_data.get('aliases'):
-                vndb_section += f"- Aliases: {', '.join(vndb_data['aliases'])}\n"
-            if vndb_data.get('description'):
-                vndb_section += f"- Description: {vndb_data['description']}\n"
-            if vndb_data.get('age'):
-                vndb_section += f"- Age: {vndb_data['age']}\n"
-            if vndb_data.get('birthday'):
-                vndb_section += f"- Birthday: {vndb_data['birthday']}\n"
-            if vndb_data.get('blood_type'):
-                vndb_section += f"- Blood Type: {vndb_data['blood_type']}\n"
-            if vndb_data.get('height'):
-                vndb_section += f"- Height: {vndb_data['height']}cm\n"
-            if vndb_data.get('weight'):
-                vndb_section += f"- Weight: {vndb_data['weight']}kg\n"
-            if vndb_data.get('bust') and vndb_data.get('waist') and vndb_data.get('hips'):
-                vndb_section += f"- Measurements: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm\n"
-            if vndb_data.get('hair'):
-                vndb_section += f"- Hair: {vndb_data['hair']}\n"
-            if vndb_data.get('eyes'):
-                vndb_section += f"- Eyes: {vndb_data['eyes']}\n"
-            if vndb_data.get('body'):
-                vndb_section += f"- Body Type: {vndb_data['body']}\n"
-            if vndb_data.get('clothes'):
-                vndb_section += f"- Clothes: {vndb_data['clothes']}\n"
-            if vndb_data.get('items'):
-                vndb_section += f"- Items: {vndb_data['items']}\n"
-            if vndb_data.get('role'):
-                vndb_section += f"- Role: {vndb_data['role']}\n"
-            if vndb_data.get('voiced_by'):
-                vndb_section += f"- Voiced by: {vndb_data['voiced_by']}\n"
-            if vndb_data.get('traits'):
-                vndb_section += f"- Traits: {', '.join(vndb_data['traits'])}\n"
-            if vndb_data.get('vns'):
-                games = vndb_data['vns'][:3]
-                vndb_section += f"- Visual Novels: {', '.join(games)}\n"
+            vndb_section = _format_vndb_section(vndb_data, "## VNDB Character Information")
             system_prompt += vndb_section
 
         if output_language:
-            lang_names = {"zh": "中文", "en": "English", "ja": "日本語"}
-            lang_name = lang_names.get(output_language, output_language)
+            lang_name = LANG_NAMES.get(output_language, output_language)
             system_prompt += f"""
 
 ## OUTPUT LANGUAGE OVERRIDE
@@ -818,8 +721,7 @@ After creating the seven required files, you MAY create additional files in the 
 Use the write_file tool to create all required files."""
 
         if output_language:
-            lang_names = {"zh": "中文", "en": "English", "ja": "日本語"}
-            lang_name = lang_names.get(output_language, output_language)
+            lang_name = LANG_NAMES.get(output_language, output_language)
             system_prompt += f"""
 
 ## OUTPUT LANGUAGE REQUIREMENT
@@ -830,46 +732,7 @@ You MUST write ALL content in {lang_name}.
 ALL output must be in {lang_name}, regardless of the source text language."""
 
         if vndb_data:
-            vndb_section = "\n\n## VNDB REFERENCE DATA (Use as authoritative source for character basic info):\n"
-            if vndb_data.get('name'):
-                vndb_section += f"- Name: {vndb_data['name']}\n"
-            if vndb_data.get('original_name'):
-                vndb_section += f"- Original Name: {vndb_data['original_name']}\n"
-            if vndb_data.get('aliases'):
-                vndb_section += f"- Aliases: {', '.join(vndb_data['aliases'])}\n"
-            if vndb_data.get('description'):
-                vndb_section += f"- Description: {vndb_data['description']}\n"
-            if vndb_data.get('age'):
-                vndb_section += f"- Age: {vndb_data['age']}\n"
-            if vndb_data.get('birthday'):
-                vndb_section += f"- Birthday: {vndb_data['birthday']}\n"
-            if vndb_data.get('blood_type'):
-                vndb_section += f"- Blood Type: {vndb_data['blood_type']}\n"
-            if vndb_data.get('height'):
-                vndb_section += f"- Height: {vndb_data['height']}cm\n"
-            if vndb_data.get('weight'):
-                vndb_section += f"- Weight: {vndb_data['weight']}kg\n"
-            if vndb_data.get('bust') and vndb_data.get('waist') and vndb_data.get('hips'):
-                vndb_section += f"- Measurements: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm\n"
-            if vndb_data.get('hair'):
-                vndb_section += f"- Hair: {vndb_data['hair']}\n"
-            if vndb_data.get('eyes'):
-                vndb_section += f"- Eyes: {vndb_data['eyes']}\n"
-            if vndb_data.get('body'):
-                vndb_section += f"- Body Type: {vndb_data['body']}\n"
-            if vndb_data.get('clothes'):
-                vndb_section += f"- Clothes: {vndb_data['clothes']}\n"
-            if vndb_data.get('items'):
-                vndb_section += f"- Items: {vndb_data['items']}\n"
-            if vndb_data.get('role'):
-                vndb_section += f"- Role: {vndb_data['role']}\n"
-            if vndb_data.get('voiced_by'):
-                vndb_section += f"- Voiced by: {vndb_data['voiced_by']}\n"
-            if vndb_data.get('traits'):
-                vndb_section += f"- Traits: {', '.join(vndb_data['traits'])}\n"
-            if vndb_data.get('vns'):
-                games = vndb_data['vns'][:3]
-                vndb_section += f"- Visual Novels: {', '.join(games)}\n"
+            vndb_section = _format_vndb_section(vndb_data, "## VNDB Character Information")
             system_prompt += vndb_section
 
         messages = [
@@ -1006,53 +869,12 @@ Be thorough and aggressive in identifying duplicates."""
         
         return messages, tools
 
-    def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language=""):
+    def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language="", checkpoint_id=None, ckpt_messages=None, ckpt_fields_data=None, ckpt_iteration_count=None):
         from utils.tool_handler import ToolHandler
         
         integrated_analysis = self._integrate_analyses(role_name, all_analyses, vndb_data)
         
-        vndb_ref = ""
-        if vndb_data:
-            vndb_info = []
-            if vndb_data.get('name'):
-                vndb_info.append(f"Name: {vndb_data['name']}")
-            if vndb_data.get('original_name'):
-                vndb_info.append(f"Original Name: {vndb_data['original_name']}")
-            if vndb_data.get('description'):
-                vndb_info.append(f"Description: {vndb_data['description']}")
-            if vndb_data.get('age'):
-                vndb_info.append(f"Age: {vndb_data['age']}")
-            if vndb_data.get('birthday'):
-                vndb_info.append(f"Birthday: {vndb_data['birthday']}")
-            if vndb_data.get('blood_type'):
-                vndb_info.append(f"Blood Type: {vndb_data['blood_type']}")
-            if vndb_data.get('height'):
-                vndb_info.append(f"Height: {vndb_data['height']}cm")
-            if vndb_data.get('weight'):
-                vndb_info.append(f"Weight: {vndb_data['weight']}kg")
-            if vndb_data.get('bust') and vndb_data.get('waist') and vndb_data.get('hips'):
-                vndb_info.append(f"Measurements: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm")
-            if vndb_data.get('hair'):
-                vndb_info.append(f"Hair: {vndb_data['hair']}")
-            if vndb_data.get('eyes'):
-                vndb_info.append(f"Eyes: {vndb_data['eyes']}")
-            if vndb_data.get('body'):
-                vndb_info.append(f"Body Type: {vndb_data['body']}")
-            if vndb_data.get('clothes'):
-                vndb_info.append(f"Clothes: {vndb_data['clothes']}")
-            if vndb_data.get('items'):
-                vndb_info.append(f"Items: {vndb_data['items']}")
-            if vndb_data.get('role'):
-                vndb_info.append(f"Role: {vndb_data['role']}")
-            if vndb_data.get('voiced_by'):
-                vndb_info.append(f"Voiced by: {vndb_data['voiced_by']}")
-            if vndb_data.get('traits'):
-                vndb_info.append(f"Traits: {', '.join(vndb_data['traits'])}")
-            if vndb_data.get('vns'):
-                games = vndb_data['vns'][:3]
-                vndb_info.append(f"Visual Novels: {', '.join(games)}")
-            if vndb_info:
-                vndb_ref = "\n\nVNDB REFERENCE DATA (HIGHEST PRIORITY - Use these values as authoritative source for character appearance and basic info):\n" + "\n".join(vndb_info)
+        vndb_ref = _format_vndb_section(vndb_data, "VNDB REFERENCE DATA (HIGHEST PRIORITY - Use these values as authoritative source for character appearance and basic info)", bullet="")
         
         tools = [
             {
@@ -1108,11 +930,18 @@ Be thorough and aggressive in identifying duplicates."""
             "tags": ["character", base_name.lower().replace(" ", "_")],
             "character_book_entries": lorebook_entries
         }
+
+        is_resuming = ckpt_messages is not None and len(ckpt_messages) > 0
+        if is_resuming and ckpt_fields_data:
+            for key in fields_data:
+                if key in ckpt_fields_data and ckpt_fields_data[key]:
+                    if key == "character_book_entries":
+                        continue
+                    fields_data[key] = ckpt_fields_data[key]
         
         language_instruction = ""
         if output_language:
-            lang_names = {"zh": "中文", "en": "English", "ja": "日本語"}
-            lang_name = lang_names.get(output_language, output_language)
+            lang_name = LANG_NAMES.get(output_language, output_language)
             language_instruction = f"""
 
 ## LANGUAGE REQUIREMENT (CRITICAL - HIGHEST PRIORITY)
@@ -1191,19 +1020,44 @@ NOTE: Do NOT write creatorcomment, creator_notes, or world_name fields. These wi
 
 Call write_field for each field. Set is_complete=true on the last call."""
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Generate the complete character card for '{role_name}'. Use the write_field tool to write each field. Start with the most important fields (name, description, system_prompt, first_mes)."}
-        ]
+        if is_resuming:
+            messages = ckpt_messages
+            tool_call_count = ckpt_iteration_count or 0
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Generate the complete character card for '{role_name}'. Use the write_field tool to write each field. Start with the most important fields (name, description, system_prompt, first_mes)."}
+            ]
+            tool_call_count = 0
         
         max_tool_calls = 50 
-        tool_call_count = 0
         
         while tool_call_count < max_tool_calls:
+            if checkpoint_id:
+                from utils.checkpoint_manager import CheckpointManager
+                mgr = CheckpointManager()
+                mgr.save_llm_state(
+                    checkpoint_id, messages=messages,
+                    iteration_count=tool_call_count,
+                    fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
+                )
+
             response = self.send_message(messages, tools=tools, use_counter=False)
             
             if not response or not response.choices:
-                break
+                if checkpoint_id:
+                    from utils.checkpoint_manager import CheckpointManager
+                    mgr = CheckpointManager()
+                    mgr.save_llm_state(
+                        checkpoint_id, messages=messages,
+                        last_response=None, iteration_count=tool_call_count,
+                        fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
+                    )
+                return {
+                    'success': False,
+                    'message': 'LLM交互失败',
+                    'can_resume': True
+                }
             
             message = response.choices[0].message
             
@@ -1258,6 +1112,15 @@ Call write_field for each field. Set is_complete=true on the last call."""
                     pass
                 
                 break
+
+            if checkpoint_id:
+                from utils.checkpoint_manager import CheckpointManager
+                mgr = CheckpointManager()
+                mgr.save_llm_state(
+                    checkpoint_id, messages=messages,
+                    last_response=response, iteration_count=tool_call_count,
+                    fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
+                )
         
         template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils', 'chara_card_template.json')
         
@@ -1289,51 +1152,7 @@ Call write_field for each field. Set is_complete=true on the last call."""
         }
     
     def _integrate_analyses(self, role_name, all_analyses, vndb_data=None):
-        vndb_section = ""
-        if vndb_data:
-            vndb_info = []
-            if vndb_data.get('name'):
-                vndb_info.append(f"Name: {vndb_data['name']}")
-            if vndb_data.get('original_name'):
-                vndb_info.append(f"Original Name: {vndb_data['original_name']}")
-            if vndb_data.get('aliases'):
-                vndb_info.append(f"Aliases: {', '.join(vndb_data['aliases'])}")
-            if vndb_data.get('description'):
-                vndb_info.append(f"Description: {vndb_data['description']}")
-            if vndb_data.get('age'):
-                vndb_info.append(f"Age: {vndb_data['age']}")
-            if vndb_data.get('birthday'):
-                vndb_info.append(f"Birthday: {vndb_data['birthday']}")
-            if vndb_data.get('blood_type'):
-                vndb_info.append(f"Blood Type: {vndb_data['blood_type']}")
-            if vndb_data.get('height'):
-                vndb_info.append(f"Height: {vndb_data['height']}cm")
-            if vndb_data.get('weight'):
-                vndb_info.append(f"Weight: {vndb_data['weight']}kg")
-            if vndb_data.get('bust') and vndb_data.get('waist') and vndb_data.get('hips'):
-                vndb_info.append(f"Measurements: {vndb_data['bust']}-{vndb_data['waist']}-{vndb_data['hips']}cm")
-            if vndb_data.get('hair'):
-                vndb_info.append(f"Hair: {vndb_data['hair']}")
-            if vndb_data.get('eyes'):
-                vndb_info.append(f"Eyes: {vndb_data['eyes']}")
-            if vndb_data.get('body'):
-                vndb_info.append(f"Body Type: {vndb_data['body']}")
-            if vndb_data.get('clothes'):
-                vndb_info.append(f"Clothes: {vndb_data['clothes']}")
-            if vndb_data.get('items'):
-                vndb_info.append(f"Items: {vndb_data['items']}")
-            if vndb_data.get('role'):
-                vndb_info.append(f"Role: {vndb_data['role']}")
-            if vndb_data.get('voiced_by'):
-                vndb_info.append(f"Voiced by: {vndb_data['voiced_by']}")
-            if vndb_data.get('traits'):
-                vndb_info.append(f"Traits: {', '.join(vndb_data['traits'])}")
-            if vndb_data.get('vns'):
-                games = vndb_data['vns'][:3]
-                vndb_info.append(f"Visual Novels: {', '.join(games)}")
-
-            if vndb_info:
-                vndb_section = "\n\n## VNDB REFERENCE DATA (Use this as authoritative source for appearance and basic info):\n" + "\n".join(vndb_info)
+        vndb_section = _format_vndb_section(vndb_data, "## VNDB Character Information", bullet="")
         
         system_prompt = f"""You are a data integration assistant for SillyTavern character card generation.
 
@@ -1391,5 +1210,3 @@ Return a JSON object with this structure:
             result = ToolHandler.parse_llm_json_response(content) or {}
             return result
         return {}
-
-from datetime import datetime
