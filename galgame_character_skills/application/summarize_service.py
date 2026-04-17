@@ -3,7 +3,6 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..utils.llm_interaction import LLMInteraction
 from ..utils.tool_handler import ToolHandler
 from ..utils.checkpoint_utils import load_resumable_checkpoint
 from ..utils.request_config import build_llm_config
@@ -11,11 +10,9 @@ from ..utils.input_normalization import extract_file_paths
 from ..domain import SummarizeRequest, ok_result, fail_result
 
 
-def _process_single_slice(args, ckpt_manager):
+def _process_single_slice(args, ckpt_manager, llm_gateway):
     slice_index, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id = args
-    llm_client = LLMInteraction()
-    if config.get('baseurl') or config.get('modelname') or config.get('apikey'):
-        llm_client.set_config(config.get('baseurl'), config.get('modelname'), config.get('apikey'), max_retries=config.get('max_retries'))
+    llm_client = llm_gateway.create_client(config)
 
     if checkpoint_id:
         existing = ckpt_manager.get_slice_result(checkpoint_id, slice_index)
@@ -167,7 +164,7 @@ def run_summarize_task(data, runtime):
         return fail_result('请先选择文件')
 
     current_slices = runtime.file_processor.slice_multiple_files(request_data.file_paths, request_data.slice_size_k)
-    LLMInteraction.set_total_requests(len(current_slices))
+    runtime.llm_gateway.set_total_requests(len(current_slices))
 
     summaries = []
     errors = []
@@ -213,7 +210,10 @@ def run_summarize_task(data, runtime):
         ))
 
     with ThreadPoolExecutor(max_workers=request_data.concurrency) as executor:
-        future_to_task = {executor.submit(_process_single_slice, task, runtime.ckpt_manager): task for task in tasks}
+        future_to_task = {
+            executor.submit(_process_single_slice, task, runtime.ckpt_manager, runtime.llm_gateway): task
+            for task in tasks
+        }
 
         for future in as_completed(future_to_task):
             try:

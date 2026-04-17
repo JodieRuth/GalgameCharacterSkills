@@ -70,7 +70,7 @@ def run_generate_character_card_task(
     if not request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if request_data.compression_mode == 'llm':
             print("Using LLM compression for analyses")
-            llm_interaction = runtime.build_llm_client(config)
+            llm_interaction = runtime.llm_gateway.create_client(config)
             compressed_analyses = compress_analyses_with_llm(
                 analyses=all_character_analyses,
                 llm_client=llm_interaction,
@@ -114,7 +114,7 @@ def run_generate_character_card_task(
         else:
             image_path = None
 
-    llm_interaction = runtime.build_llm_client(config)
+    llm_interaction = runtime.llm_gateway.create_client(config)
     result = llm_interaction.generate_character_card_with_tools(
         request_data.role_name,
         all_character_analyses,

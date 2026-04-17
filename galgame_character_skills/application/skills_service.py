@@ -64,7 +64,7 @@ def run_generate_skills_task(
     if not request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if request_data.compression_mode == 'llm':
             print("Using LLM compression")
-            llm_interaction = runtime.build_llm_client(config)
+            llm_interaction = runtime.llm_gateway.create_client(config)
             summaries_text = compress_summary_files_with_llm(
                 summary_files=summary_files,
                 llm_client=llm_interaction,
@@ -109,7 +109,7 @@ def run_generate_skills_task(
         f"compression_ratio={compression_ratio:.2%} "
         f"strategy={strategy_name}"
     )
-    llm_interaction = runtime.build_llm_client(config)
+    llm_interaction = runtime.llm_gateway.create_client(config)
 
     if not request_data.resume_checkpoint_id:
         messages, tools = llm_interaction.generate_skills_folder_init(

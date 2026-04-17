@@ -5,10 +5,10 @@ from ..utils.app_runtime import configure_werkzeug_logging
 from ..utils.checkpoint_manager import CheckpointManager
 from ..utils.file_processor import FileProcessor
 from ..utils.image_card_utils import download_vndb_image, embed_json_in_png
-from ..utils.llm_factory import build_llm_client
 from ..utils.path_utils import get_base_dir
 from ..utils.token_utils import estimate_tokens_from_text
 from ..utils.vndb_utils import load_r18_traits, clean_vndb_data
+from .llm_gateway import DefaultLLMGateway, LLMGateway
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class TaskRuntimeDependencies:
     clean_vndb_data: Callable[[Any], Any]
     get_base_dir: Callable[[], str]
     estimate_tokens: Callable[[str], int]
-    build_llm_client: Callable[[dict], Any]
+    llm_gateway: LLMGateway
     download_vndb_image: Callable[[str, str], bool]
     embed_json_in_png: Callable[[dict, str, str], bool]
 
@@ -46,7 +46,7 @@ def build_task_runtime(deps: AppDependencies):
         clean_vndb_data=clean_vndb_data,
         get_base_dir=get_base_dir,
         estimate_tokens=estimate_tokens_from_text,
-        build_llm_client=build_llm_client,
+        llm_gateway=DefaultLLMGateway(),
         download_vndb_image=download_vndb_image,
         embed_json_in_png=embed_json_in_png,
     )
@@ -60,7 +60,6 @@ __all__ = [
     "get_base_dir",
     "clean_vndb_data",
     "estimate_tokens_from_text",
-    "build_llm_client",
     "download_vndb_image",
     "embed_json_in_png",
 ]
