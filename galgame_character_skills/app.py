@@ -134,7 +134,7 @@ def resume_checkpoint(checkpoint_id):
 
 @app.route('/api/vndb', methods=['POST'])
 def get_vndb_info():
-    return _run_json_with_body(get_vndb_info_result, deps.r18_traits, fetch_vndb_character)
+    return _run_json_with_body(get_vndb_info_result, deps.r18_traits, task_runtime.vndb_gateway, fetch_vndb_character)
 
 
 def create_app():

@@ -1,8 +1,7 @@
-import requests
 from ..domain import ok_result, fail_result
 
 
-def fetch_vndb_character(vndb_id, r18_traits):
+def fetch_vndb_character(vndb_id, r18_traits, vndb_gateway):
     vndb_id = (vndb_id or '').strip()
     if not vndb_id:
         return fail_result('未提供VNDB ID')
@@ -15,16 +14,7 @@ def fetch_vndb_character(vndb_id, r18_traits):
         return fail_result('无效的VNDB ID格式，应为 c+数字 或纯数字')
 
     try:
-        api_request = {
-            'filters': ['id', '=', f'c{char_id}'],
-            'fields': 'id,name,original,aliases,description,age,birthday,blood_type,height,weight,bust,waist,hips,image.url,traits.name,vns.title,sex'
-        }
-
-        response = requests.post(
-            'https://api.vndb.org/kana/character',
-            json=api_request,
-            timeout=10
-        )
+        response = vndb_gateway.query_character(char_id=char_id, timeout=10)
 
         if response.status_code == 200:
             data = response.json()
@@ -66,7 +56,7 @@ def fetch_vndb_character(vndb_id, r18_traits):
             return fail_result('未找到该角色')
         return fail_result(f'VNDB API请求失败: HTTP {response.status_code}')
 
-    except requests.exceptions.Timeout:
+    except TimeoutError:
         return fail_result('VNDB API请求超时')
     except Exception as e:
         return fail_result(f'获取VNDB信息失败: {str(e)}')

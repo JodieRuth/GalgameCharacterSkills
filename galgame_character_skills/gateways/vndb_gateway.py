@@ -15,8 +15,11 @@ class DefaultVndbGateway(VndbGateway):
             "filters": ["id", "=", f"c{char_id}"],
             "fields": "id,name,original,aliases,description,age,birthday,blood_type,height,weight,bust,waist,hips,image.url,traits.name,vns.title,sex",
         }
-        response = requests.post(self.endpoint, json=api_request, timeout=timeout)
-        return response
+        try:
+            response = requests.post(self.endpoint, json=api_request, timeout=timeout)
+            return response
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError("VNDB API timeout") from e
 
 
 __all__ = ["VndbGateway", "DefaultVndbGateway"]
