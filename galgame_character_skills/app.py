@@ -18,9 +18,9 @@ from .api.checkpoint_service import (
 from .utils.summary_discovery import discover_summary_roles, find_summary_files_for_role
 from .utils.input_normalization import extract_file_paths
 from .api.vndb_service import fetch_vndb_character
-from .utils.path_utils import get_resource_path
 from .utils.llm_budget import get_model_context_limit
 from .utils.app_runtime import open_browser
+from .web import get_template_dir
 from .application import (
     build_app_dependencies,
     get_base_dir,
@@ -32,7 +32,7 @@ from .application import (
 )
 
 
-app = Flask(__name__, template_folder=get_resource_path('utils'))
+app = Flask(__name__, template_folder=get_template_dir())
 CORS(app)
 
 deps = build_app_dependencies()
