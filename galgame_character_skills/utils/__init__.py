@@ -2,13 +2,11 @@ from .app_runtime import open_browser, configure_werkzeug_logging
 from .file_processor import FileProcessor
 from .checkpoint_manager import CheckpointManager
 from .tool_handler import ToolHandler
-from ..llm import LLMInteraction
 from .checkpoint_utils import load_resumable_checkpoint
 from .compression_service import compress_summary_files_with_llm, compress_analyses_with_llm
 from .image_card_utils import download_vndb_image, embed_json_in_png
 from .input_normalization import extract_file_paths
 from .llm_budget import get_model_context_limit, calculate_compression_threshold
-from .llm_factory import build_llm_client
 from .path_utils import get_base_dir, get_resource_path
 from .request_config import build_llm_config
 from .skills_context_builder import (
@@ -22,6 +20,21 @@ from .skills_postprocess import append_vndb_info_to_skill_md, create_code_skill_
 from .summary_discovery import discover_summary_roles, find_summary_files_for_role
 from .token_utils import estimate_tokens_from_text
 from .vndb_utils import load_r18_traits, clean_vndb_data
+
+
+def __getattr__(name: str):
+    if name == "build_llm_client":
+        from .llm_factory import build_llm_client
+
+        globals()["build_llm_client"] = build_llm_client
+        return build_llm_client
+    if name == "LLMInteraction":
+        from ..llm import LLMInteraction
+
+        globals()["LLMInteraction"] = LLMInteraction
+        return LLMInteraction
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "open_browser",
