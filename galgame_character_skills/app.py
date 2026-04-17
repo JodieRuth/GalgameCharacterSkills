@@ -5,7 +5,7 @@ from utils.file_processor import FileProcessor
 from utils.checkpoint_manager import CheckpointManager
 from .services.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
 from .services.summary_api_service import scan_summary_roles_result, get_summary_files_result
-from services.task_api_service import (
+from .services.task_api_service import (
     summarize_result,
     generate_skills_result,
     generate_skills_folder_result,
@@ -17,8 +17,8 @@ from .services.checkpoint_service import (
     delete_checkpoint_result,
     resume_checkpoint_result,
 )
-from services.summary_discovery import discover_summary_roles, find_summary_files_for_role
-from services.input_normalization import extract_file_paths
+from .services.summary_discovery import discover_summary_roles, find_summary_files_for_role
+from .services.input_normalization import extract_file_paths
 from services.vndb_service import fetch_vndb_character
 from services.vndb_utils import load_r18_traits, clean_vndb_data
 from services.image_card_utils import download_vndb_image, embed_json_in_png

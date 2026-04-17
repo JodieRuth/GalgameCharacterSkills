@@ -6,6 +6,14 @@ from .checkpoint_service import (
     delete_checkpoint_result,
     resume_checkpoint_result,
 )
+from .task_api_service import (
+    summarize_result,
+    generate_skills_result,
+    generate_skills_folder_result,
+    generate_character_card_result,
+)
+from .input_normalization import extract_file_paths
+from .summary_discovery import discover_summary_roles, find_summary_files_for_role
 
 __all__ = [
     "scan_files_result",
@@ -17,4 +25,11 @@ __all__ = [
     "get_checkpoint_result",
     "delete_checkpoint_result",
     "resume_checkpoint_result",
+    "summarize_result",
+    "generate_skills_result",
+    "generate_skills_folder_result",
+    "generate_character_card_result",
+    "extract_file_paths",
+    "discover_summary_roles",
+    "find_summary_files_for_role",
 ]
