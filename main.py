@@ -28,18 +28,7 @@ from services.image_card_utils import download_vndb_image, embed_json_in_png
 from services.path_utils import get_base_dir, get_resource_path
 from services.llm_factory import build_llm_client
 from services.token_utils import estimate_tokens_from_text
-from services.llm_budget import (
-    get_model_context_limit as resolve_model_context_limit,
-    calculate_compression_threshold as resolve_compression_threshold,
-)
-
-
-def get_model_context_limit(model_name):
-    return resolve_model_context_limit(model_name)
-
-
-def calculate_compression_threshold(context_limit):
-    return resolve_compression_threshold(context_limit)
+from services.llm_budget import get_model_context_limit
 
 
 app = Flask(__name__, template_folder=get_resource_path('utils'))
