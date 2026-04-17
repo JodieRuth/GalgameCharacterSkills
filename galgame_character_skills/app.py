@@ -1,8 +1,8 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 
-from utils.file_processor import FileProcessor
-from utils.checkpoint_manager import CheckpointManager
+from .utils.file_processor import FileProcessor
+from .utils.checkpoint_manager import CheckpointManager
 from .services.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
 from .services.summary_api_service import scan_summary_roles_result, get_summary_files_result
 from .services.task_api_service import (

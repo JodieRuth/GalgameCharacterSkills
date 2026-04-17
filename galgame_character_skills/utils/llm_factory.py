@@ -1,4 +1,4 @@
-from utils.llm_interaction import LLMInteraction
+from .llm_interaction import LLMInteraction
 
 
 def build_llm_client(config=None):

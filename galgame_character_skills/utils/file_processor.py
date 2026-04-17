@@ -1,6 +1,8 @@
 import os
-import sys
 import tiktoken
+
+from .path_utils import get_base_dir
+
 
 class FileProcessor:
     def __init__(self):
@@ -9,10 +11,7 @@ class FileProcessor:
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
     
     def _get_base_dir(self):
-        if getattr(sys, 'frozen', False):
-            return os.path.dirname(sys.executable)
-        else:
-            return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return get_base_dir()
     
     def _get_resource_dir(self):
         return os.path.join(self._get_base_dir(), 'resource')

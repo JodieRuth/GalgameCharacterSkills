@@ -6,6 +6,8 @@ import os
 def load_r18_traits(base_dir):
     try:
         json_path = os.path.join(base_dir, 'utils', 'r18_traits.json')
+        if not os.path.exists(json_path):
+            json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'r18_traits.json')
         with open(json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         encoded_traits = data.get('encoded_traits', [])

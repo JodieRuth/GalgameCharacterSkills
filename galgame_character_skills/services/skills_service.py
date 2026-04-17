@@ -1,7 +1,7 @@
 import json
 import os
 
-from utils.tool_handler import ToolHandler
+from ..utils.tool_handler import ToolHandler
 from ..utils.checkpoint_utils import load_resumable_checkpoint
 from ..utils.summary_discovery import find_role_summary_markdown_files
 from ..utils.request_config import build_llm_config

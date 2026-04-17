@@ -870,7 +870,7 @@ Be thorough and aggressive in identifying duplicates."""
         return messages, tools
 
     def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language="", checkpoint_id=None, ckpt_messages=None, ckpt_fields_data=None, ckpt_iteration_count=None):
-        from utils.tool_handler import ToolHandler
+        from .tool_handler import ToolHandler
         
         integrated_analysis = self._integrate_analyses(role_name, all_analyses, vndb_data)
         
@@ -1034,7 +1034,7 @@ Call write_field for each field. Set is_complete=true on the last call."""
         
         while tool_call_count < max_tool_calls:
             if checkpoint_id:
-                from utils.checkpoint_manager import CheckpointManager
+                from .checkpoint_manager import CheckpointManager
                 mgr = CheckpointManager()
                 mgr.save_llm_state(
                     checkpoint_id, messages=messages,
@@ -1046,7 +1046,7 @@ Call write_field for each field. Set is_complete=true on the last call."""
             
             if not response or not response.choices:
                 if checkpoint_id:
-                    from utils.checkpoint_manager import CheckpointManager
+                    from .checkpoint_manager import CheckpointManager
                     mgr = CheckpointManager()
                     mgr.save_llm_state(
                         checkpoint_id, messages=messages,
@@ -1114,7 +1114,7 @@ Call write_field for each field. Set is_complete=true on the last call."""
                 break
 
             if checkpoint_id:
-                from utils.checkpoint_manager import CheckpointManager
+                from .checkpoint_manager import CheckpointManager
                 mgr = CheckpointManager()
                 mgr.save_llm_state(
                     checkpoint_id, messages=messages,
@@ -1206,7 +1206,7 @@ Return a JSON object with this structure:
         
         if response and response.choices:
             content = response.choices[0].message.content
-            from utils.tool_handler import ToolHandler
+            from .tool_handler import ToolHandler
             result = ToolHandler.parse_llm_json_response(content) or {}
             return result
         return {}

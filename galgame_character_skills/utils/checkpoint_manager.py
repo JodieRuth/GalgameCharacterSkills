@@ -6,6 +6,8 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+from .path_utils import get_base_dir
+
 
 class CheckpointManager:
     _instance = None
@@ -26,11 +28,7 @@ class CheckpointManager:
         if checkpoint_dir is None:
             checkpoint_dir = self._init_dir
         if checkpoint_dir is None:
-            import sys
-            if getattr(sys, 'frozen', False):
-                base = os.path.dirname(sys.executable)
-            else:
-                base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            base = get_base_dir()
             checkpoint_dir = os.path.join(base, 'checkpoints')
 
         self.checkpoint_dir = checkpoint_dir
