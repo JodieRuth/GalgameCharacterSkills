@@ -2,6 +2,7 @@ from .summarize_service import run_summarize_task
 from .skills_service import run_generate_skills_task
 from .character_card_service import run_generate_character_card_task
 from .llm_gateway import LLMGateway, DefaultLLMGateway
+from .tool_gateway import ToolGateway, DefaultToolGateway
 from .app_container import (
     AppDependencies,
     TaskRuntimeDependencies,
@@ -20,6 +21,8 @@ __all__ = [
     "run_generate_character_card_task",
     "LLMGateway",
     "DefaultLLMGateway",
+    "ToolGateway",
+    "DefaultToolGateway",
     "AppDependencies",
     "TaskRuntimeDependencies",
     "build_app_dependencies",

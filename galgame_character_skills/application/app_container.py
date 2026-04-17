@@ -9,6 +9,7 @@ from ..utils.path_utils import get_base_dir
 from ..utils.token_utils import estimate_tokens_from_text
 from ..utils.vndb_utils import load_r18_traits, clean_vndb_data
 from .llm_gateway import DefaultLLMGateway, LLMGateway
+from .tool_gateway import DefaultToolGateway, ToolGateway
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class TaskRuntimeDependencies:
     get_base_dir: Callable[[], str]
     estimate_tokens: Callable[[str], int]
     llm_gateway: LLMGateway
+    tool_gateway: ToolGateway
     download_vndb_image: Callable[[str, str], bool]
     embed_json_in_png: Callable[[dict, str, str], bool]
 
@@ -47,6 +49,7 @@ def build_task_runtime(deps: AppDependencies):
         get_base_dir=get_base_dir,
         estimate_tokens=estimate_tokens_from_text,
         llm_gateway=DefaultLLMGateway(),
+        tool_gateway=DefaultToolGateway(),
         download_vndb_image=download_vndb_image,
         embed_json_in_png=embed_json_in_png,
     )

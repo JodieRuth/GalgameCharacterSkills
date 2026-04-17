@@ -3,14 +3,13 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..utils.tool_handler import ToolHandler
 from ..utils.checkpoint_utils import load_resumable_checkpoint
 from ..utils.request_config import build_llm_config
 from ..utils.input_normalization import extract_file_paths
 from ..domain import SummarizeRequest, ok_result, fail_result
 
 
-def _process_single_slice(args, ckpt_manager, llm_gateway):
+def _process_single_slice(args, ckpt_manager, llm_gateway, tool_gateway):
     slice_index, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id = args
     llm_client = llm_gateway.create_client(config)
 
@@ -69,7 +68,7 @@ def _process_single_slice(args, ckpt_manager, llm_gateway):
         if mode == 'chara_card':
             if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
                 for tool_call in choice.message.tool_calls:
-                    tool_result = ToolHandler.handle_tool_call(tool_call)
+                    tool_result = tool_gateway.handle_tool_call(tool_call)
                     result['tool_results'].append(tool_result)
                 result['success'] = True
                 result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
@@ -84,7 +83,7 @@ def _process_single_slice(args, ckpt_manager, llm_gateway):
 
             elif hasattr(choice, 'message') and choice.message.content:
                 content = choice.message.content
-                parsed = ToolHandler.parse_llm_json_response(content)
+                parsed = tool_gateway.parse_llm_json_response(content)
                 if parsed:
                     result['character_analysis'] = parsed.get('character_analysis', {})
                     result['lorebook_entries'] = parsed.get('lorebook_entries', [])
@@ -95,7 +94,7 @@ def _process_single_slice(args, ckpt_manager, llm_gateway):
         else:
             if hasattr(choice, 'message') and hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
                 for tool_call in choice.message.tool_calls:
-                    tool_result = ToolHandler.handle_tool_call(tool_call)
+                    tool_result = tool_gateway.handle_tool_call(tool_call)
                     result['tool_results'].append(tool_result)
                 result['success'] = True
                 result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
@@ -211,7 +210,13 @@ def run_summarize_task(data, runtime):
 
     with ThreadPoolExecutor(max_workers=request_data.concurrency) as executor:
         future_to_task = {
-            executor.submit(_process_single_slice, task, runtime.ckpt_manager, runtime.llm_gateway): task
+            executor.submit(
+                _process_single_slice,
+                task,
+                runtime.ckpt_manager,
+                runtime.llm_gateway,
+                runtime.tool_gateway
+            ): task
             for task in tasks
         }
 

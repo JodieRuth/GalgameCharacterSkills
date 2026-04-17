@@ -1,7 +1,6 @@
 import json
 import os
 
-from ..utils.tool_handler import ToolHandler
 from ..utils.checkpoint_utils import load_resumable_checkpoint
 from ..utils.summary_discovery import find_role_summary_markdown_files
 from ..utils.request_config import build_llm_config
@@ -163,7 +162,7 @@ def run_generate_skills_task(
         }
         messages.append(assistant_message)
         for tool_call in tool_calls:
-            result = ToolHandler.handle_tool_call(tool_call)
+            result = runtime.tool_gateway.handle_tool_call(tool_call)
             all_results.append(result)
             tool_response = {
                 "role": "tool",
