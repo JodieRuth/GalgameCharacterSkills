@@ -9,6 +9,7 @@ from utils.checkpoint_manager import CheckpointManager
 from services.summarize_service import run_summarize_task
 from services.skills_service import run_generate_skills_task
 from services.character_card_service import run_generate_character_card_task
+from services.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
 from services.checkpoint_service import (
     list_checkpoints_result,
     get_checkpoint_result,
@@ -68,8 +69,7 @@ def index():
 
 @app.route('/api/files', methods=['GET'])
 def scan_files():
-    files = file_processor.scan_resource_files()
-    return jsonify({'success': True, 'files': files})
+    return jsonify(scan_files_result(file_processor))
 
 @app.route('/api/summaries/roles', methods=['GET'])
 def scan_summary_roles():
@@ -94,22 +94,7 @@ def get_summary_files():
 
 @app.route('/api/files/tokens', methods=['POST'])
 def calculate_tokens():
-    data = _json_body()
-    file_path = data.get('file_path', '')
-    slice_size_k = data.get('slice_size_k', 50)
-    if not file_path:
-        return jsonify({'success': False, 'message': '未提供文件路径'})
-    try:
-        token_count = file_processor.calculate_tokens(file_path)
-        slice_count = file_processor.calculate_slices(token_count, slice_size_k)
-        return jsonify({
-            'success': True,
-            'token_count': token_count,
-            'slice_count': slice_count,
-            'formatted_tokens': f"{token_count:,}"
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
+    return jsonify(calculate_tokens_result(file_processor, _json_body()))
 
 
 @app.route('/api/context-limit', methods=['POST'])
@@ -122,28 +107,7 @@ def get_context_limit():
 
 @app.route('/api/slice', methods=['POST'])
 def slice_file():
-    data = _json_body()
-    slice_size_k = data.get('slice_size_k', 50)
-    
-    file_paths = extract_file_paths(data)
-    
-    if not file_paths:
-        return jsonify({'success': False, 'message': '请先选择文件'})
-    
-    try:
-        slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
-        file_count = len(file_paths)
-        return jsonify({
-            'success': True,
-            'message': f'已合并 {file_count} 个文件并切片，共 {len(slices)} 个切片',
-            'slice_count': len(slices),
-            'file_count': file_count
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'切片失败: {str(e)}'
-        })
+    return jsonify(slice_file_result(file_processor, _json_body(), extract_file_paths))
 
 @app.route('/api/summarize', methods=['POST'])
 def summarize():
