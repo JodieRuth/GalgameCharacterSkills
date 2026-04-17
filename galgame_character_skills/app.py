@@ -3,15 +3,15 @@ from flask_cors import CORS
 
 from .utils.file_processor import FileProcessor
 from .utils.checkpoint_manager import CheckpointManager
-from .services.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
-from .services.summary_api_service import scan_summary_roles_result, get_summary_files_result
-from .services.task_api_service import (
+from .api.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
+from .api.summary_api_service import scan_summary_roles_result, get_summary_files_result
+from .api.task_api_service import (
     summarize_result,
     generate_skills_result,
     generate_skills_folder_result,
     generate_character_card_result,
 )
-from .services.checkpoint_service import (
+from .api.checkpoint_service import (
     list_checkpoints_result,
     get_checkpoint_result,
     delete_checkpoint_result,
@@ -19,7 +19,7 @@ from .services.checkpoint_service import (
 )
 from .utils.summary_discovery import discover_summary_roles, find_summary_files_for_role
 from .utils.input_normalization import extract_file_paths
-from .services.vndb_service import fetch_vndb_character
+from .api.vndb_service import fetch_vndb_character
 from .utils.vndb_utils import load_r18_traits, clean_vndb_data
 from .utils.image_card_utils import download_vndb_image, embed_json_in_png
 from .utils.path_utils import get_base_dir, get_resource_path

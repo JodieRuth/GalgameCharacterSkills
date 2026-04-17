@@ -1,6 +1,6 @@
-from .summarize_service import run_summarize_task
-from .skills_service import run_generate_skills_task
-from .character_card_service import run_generate_character_card_task
+from ..application.summarize_service import run_summarize_task
+from ..application.skills_service import run_generate_skills_task
+from ..application.character_card_service import run_generate_character_card_task
 
 
 def summarize_result(data, file_processor, ckpt_manager, clean_vndb_data):
