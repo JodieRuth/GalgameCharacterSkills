@@ -3,15 +3,15 @@ from flask_cors import CORS
 
 from utils.file_processor import FileProcessor
 from utils.checkpoint_manager import CheckpointManager
-from services.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
-from services.summary_api_service import scan_summary_roles_result, get_summary_files_result
+from .services.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
+from .services.summary_api_service import scan_summary_roles_result, get_summary_files_result
 from services.task_api_service import (
     summarize_result,
     generate_skills_result,
     generate_skills_folder_result,
     generate_character_card_result,
 )
-from services.checkpoint_service import (
+from .services.checkpoint_service import (
     list_checkpoints_result,
     get_checkpoint_result,
     delete_checkpoint_result,
