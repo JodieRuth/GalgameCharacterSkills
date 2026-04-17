@@ -20,6 +20,7 @@ from services.summarize_service import run_summarize_task
 from services.skills_service import run_generate_skills_task
 from services.character_card_service import run_generate_character_card_task
 from services.summary_discovery import discover_summary_roles, find_summary_files_for_role
+from services.checkpoint_utils import load_resumable_checkpoint
 
 _tokenizer = tiktoken.get_encoding("cl100k_base")
 
@@ -970,11 +971,9 @@ def delete_checkpoint(checkpoint_id):
 
 @app.route('/api/checkpoints/<checkpoint_id>/resume', methods=['POST'])
 def resume_checkpoint(checkpoint_id):
-    ckpt = ckpt_manager.load_checkpoint(checkpoint_id)
-    if not ckpt:
-        return jsonify({'success': False, 'message': f'未找到Checkpoint: {checkpoint_id}'})
-    if ckpt['status'] == 'completed':
-        return jsonify({'success': False, 'message': '该任务已完成，无需恢复'})
+    ckpt, error = load_resumable_checkpoint(ckpt_manager, checkpoint_id)
+    if error:
+        return jsonify(error)
     
     task_type = ckpt['task_type']
     input_params = ckpt.get('input_params', {})
