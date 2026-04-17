@@ -8,7 +8,7 @@ from ..utils.tool_handler import ToolHandler
 from ..utils.checkpoint_utils import load_resumable_checkpoint
 from ..utils.request_config import build_llm_config
 from ..utils.input_normalization import extract_file_paths
-from ..domain import SummarizeRequest
+from ..domain import SummarizeRequest, ok_result, fail_result
 
 
 def _process_single_slice(args, ckpt_manager):
@@ -140,7 +140,7 @@ def run_summarize_task(data, runtime):
     request_data = SummarizeRequest.from_payload(data, runtime.clean_vndb_data, extract_file_paths)
 
     if not request_data.role_name:
-        return {'success': False, 'message': '请输入角色名称'}
+        return fail_result('请输入角色名称')
 
     config = build_llm_config(data)
     if request_data.resume_checkpoint_id:
@@ -155,7 +155,7 @@ def run_summarize_task(data, runtime):
         print(f"Resuming summarize: {len(completed_indices)}/{ckpt['progress'].get('total_steps', '?')} slices already done")
     else:
         if not request_data.file_paths:
-            return {'success': False, 'message': '请先选择文件'}
+            return fail_result('请先选择文件')
 
         checkpoint_id = runtime.ckpt_manager.create_checkpoint(
             task_type='summarize',
@@ -163,7 +163,7 @@ def run_summarize_task(data, runtime):
         )
 
     if not request_data.file_paths:
-        return {'success': False, 'message': '请先选择文件'}
+        return fail_result('请先选择文件')
 
     current_slices = runtime.file_processor.slice_multiple_files(request_data.file_paths, request_data.slice_size_k)
     LLMInteraction.set_total_requests(len(current_slices))
@@ -240,33 +240,30 @@ def run_summarize_task(data, runtime):
 
     if errors and len(summaries) == 0:
         runtime.ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片全部失败')
-        return {
-            'success': False,
-            'message': f'归纳失败，{len(errors)} 个切片失败',
-            'slice_count': len(current_slices),
-            'errors': errors,
-            'results': all_results,
-            'checkpoint_id': checkpoint_id,
-            'can_resume': True
-        }
+        return fail_result(
+            f'归纳失败，{len(errors)} 个切片失败',
+            slice_count=len(current_slices),
+            errors=errors,
+            results=all_results,
+            checkpoint_id=checkpoint_id,
+            can_resume=True
+        )
 
     if errors:
         runtime.ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片失败，可恢复继续处理')
-        return {
-            'success': True,
-            'message': f'归纳部分完成，{len(errors)} 个切片失败，可通过任务列表继续',
-            'slice_count': len(current_slices),
-            'errors': errors,
-            'results': all_results,
-            'checkpoint_id': checkpoint_id,
-            'can_resume': True
-        }
+        return ok_result(
+            message=f'归纳部分完成，{len(errors)} 个切片失败，可通过任务列表继续',
+            slice_count=len(current_slices),
+            errors=errors,
+            results=all_results,
+            checkpoint_id=checkpoint_id,
+            can_resume=True
+        )
 
     runtime.ckpt_manager.mark_completed(checkpoint_id)
-    return {
-        'success': True,
-        'message': '归纳完成',
-        'slice_count': len(current_slices),
-        'results': all_results,
-        'checkpoint_id': checkpoint_id
-    }
+    return ok_result(
+        message='归纳完成',
+        slice_count=len(current_slices),
+        results=all_results,
+        checkpoint_id=checkpoint_id
+    )

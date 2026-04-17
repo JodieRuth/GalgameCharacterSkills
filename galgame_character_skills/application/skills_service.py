@@ -12,7 +12,7 @@ from ..utils.skills_context_builder import (
 )
 from ..utils.compression_service import compress_summary_files_with_llm
 from ..utils.llm_budget import get_model_context_limit, calculate_compression_threshold
-from ..domain import GenerateSkillsRequest
+from ..domain import GenerateSkillsRequest, ok_result, fail_result
 
 
 def run_generate_skills_task(
@@ -49,7 +49,7 @@ def run_generate_skills_task(
     script_dir = runtime.get_base_dir()
     summary_files = find_role_summary_markdown_files(script_dir, request_data.role_name)
     if not summary_files:
-        return {'success': False, 'message': f'未找到角色 "{request_data.role_name}" 的归纳文件，请先完成归纳'}
+        return fail_result(f'未找到角色 "{request_data.role_name}" 的归纳文件，请先完成归纳')
     raw_full_text = build_full_skill_generation_context(summary_files)
     raw_total_chars = len(raw_full_text)
     raw_estimated_tokens = runtime.estimate_tokens(raw_full_text)
@@ -90,7 +90,7 @@ def run_generate_skills_task(
             context_mode = "full"
 
     if not summaries_text:
-        return {'success': False, 'message': f'未能读取角色 "{request_data.role_name}" 的归纳内容'}
+        return fail_result(f'未能读取角色 "{request_data.role_name}" 的归纳内容')
     compressed_chars = len(summaries_text)
     estimated_tokens = runtime.estimate_tokens(summaries_text)
     compression_ratio = (compressed_chars / raw_total_chars) if raw_total_chars else 0
@@ -140,10 +140,11 @@ def run_generate_skills_task(
                 last_response=None, iteration_count=iteration, all_results=all_results
             )
             runtime.ckpt_manager.mark_failed(checkpoint_id, 'LLM交互失败')
-            return {
-                'success': False, 'message': 'LLM交互失败',
-                'checkpoint_id': checkpoint_id, 'can_resume': True
-            }
+            return fail_result(
+                'LLM交互失败',
+                checkpoint_id=checkpoint_id,
+                can_resume=True
+            )
         tool_calls = llm_interaction.get_tool_response(response)
         if not tool_calls:
             break
@@ -183,9 +184,8 @@ def run_generate_skills_task(
     if copy_result:
         all_results.append(copy_result)
     runtime.ckpt_manager.mark_completed(checkpoint_id)
-    return {
-        'success': True,
-        'message': f'技能文件夹生成完成，共执行 {len(all_results)} 次文件写入',
-        'results': all_results,
-        'checkpoint_id': checkpoint_id
-    }
+    return ok_result(
+        message=f'技能文件夹生成完成，共执行 {len(all_results)} 次文件写入',
+        results=all_results,
+        checkpoint_id=checkpoint_id
+    )

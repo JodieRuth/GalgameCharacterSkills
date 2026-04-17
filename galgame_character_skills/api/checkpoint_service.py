@@ -1,24 +1,25 @@
 from ..utils.checkpoint_utils import load_resumable_checkpoint
+from ..domain import ok_result, fail_result
 
 
 def list_checkpoints_result(ckpt_manager, task_type=None, status=None):
     checkpoints = ckpt_manager.list_checkpoints(task_type=task_type, status=status)
-    return {'success': True, 'checkpoints': checkpoints}
+    return ok_result(checkpoints=checkpoints)
 
 
 def get_checkpoint_result(ckpt_manager, checkpoint_id):
     ckpt = ckpt_manager.load_checkpoint(checkpoint_id)
     if not ckpt:
-        return {'success': False, 'message': f'未找到Checkpoint: {checkpoint_id}'}
+        return fail_result(f'未找到Checkpoint: {checkpoint_id}')
     llm_state = ckpt_manager.load_llm_state(checkpoint_id)
-    return {'success': True, 'checkpoint': ckpt, 'llm_state': llm_state}
+    return ok_result(checkpoint=ckpt, llm_state=llm_state)
 
 
 def delete_checkpoint_result(ckpt_manager, checkpoint_id):
     success = ckpt_manager.delete_checkpoint(checkpoint_id)
     if success:
-        return {'success': True, 'message': 'Checkpoint已删除'}
-    return {'success': False, 'message': f'未找到Checkpoint: {checkpoint_id}'}
+        return ok_result(message='Checkpoint已删除')
+    return fail_result(f'未找到Checkpoint: {checkpoint_id}')
 
 
 def resume_checkpoint_result(
@@ -44,4 +45,4 @@ def resume_checkpoint_result(
         return generate_skills_handler(input_params)
     if task_type == 'generate_chara_card':
         return generate_chara_card_handler(input_params)
-    return {'success': False, 'message': f'未知的任务类型: {task_type}'}
+    return fail_result(f'未知的任务类型: {task_type}')

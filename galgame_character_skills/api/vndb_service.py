@@ -1,17 +1,18 @@
 import requests
+from ..domain import ok_result, fail_result
 
 
 def fetch_vndb_character(vndb_id, r18_traits):
     vndb_id = (vndb_id or '').strip()
     if not vndb_id:
-        return {'success': False, 'message': '未提供VNDB ID'}
+        return fail_result('未提供VNDB ID')
 
     char_id = vndb_id
     if vndb_id.lower().startswith('c'):
         char_id = vndb_id[1:]
 
     if not char_id.isdigit():
-        return {'success': False, 'message': '无效的VNDB ID格式，应为 c+数字 或纯数字'}
+        return fail_result('无效的VNDB ID格式，应为 c+数字 或纯数字')
 
     try:
         api_request = {
@@ -42,9 +43,8 @@ def fetch_vndb_character(vndb_id, r18_traits):
                 vns = character.get('vns', [])
                 vn_list = [v.get('title', '') for v in vns if v.get('title', '')]
 
-                return {
-                    'success': True,
-                    'data': {
+                return ok_result(
+                    data={
                         'vndb_id': vndb_id,
                         'name': character.get('name', ''),
                         'original_name': character.get('original', ''),
@@ -62,11 +62,11 @@ def fetch_vndb_character(vndb_id, r18_traits):
                         'traits': trait_names,
                         'vns': vn_list
                     }
-                }
-            return {'success': False, 'message': '未找到该角色'}
-        return {'success': False, 'message': f'VNDB API请求失败: HTTP {response.status_code}'}
+                )
+            return fail_result('未找到该角色')
+        return fail_result(f'VNDB API请求失败: HTTP {response.status_code}')
 
     except requests.exceptions.Timeout:
-        return {'success': False, 'message': 'VNDB API请求超时'}
+        return fail_result('VNDB API请求超时')
     except Exception as e:
-        return {'success': False, 'message': f'获取VNDB信息失败: {str(e)}'}
+        return fail_result(f'获取VNDB信息失败: {str(e)}')

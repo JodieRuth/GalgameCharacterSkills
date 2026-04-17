@@ -6,7 +6,7 @@ from ..utils.summary_discovery import find_role_analysis_summary_file
 from ..utils.request_config import build_llm_config
 from ..utils.llm_budget import get_model_context_limit, calculate_compression_threshold
 from ..utils.compression_service import compress_analyses_with_llm
-from ..domain import GenerateCharacterCardRequest
+from ..domain import GenerateCharacterCardRequest, ok_result, fail_result
 
 
 def run_generate_character_card_task(
@@ -43,19 +43,19 @@ def run_generate_character_card_task(
     analysis_file = find_role_analysis_summary_file(script_dir, request_data.role_name)
 
     if not analysis_file:
-        return {'success': False, 'message': f'未找到角色 "{request_data.role_name}" 的分析文件，请先完成归纳'}
+        return fail_result(f'未找到角色 "{request_data.role_name}" 的分析文件，请先完成归纳')
 
     try:
         with open(analysis_file, 'r', encoding='utf-8') as f:
             analysis_data = json.load(f)
     except Exception as e:
-        return {'success': False, 'message': f'读取分析文件失败: {str(e)}'}
+        return fail_result(f'读取分析文件失败: {str(e)}')
 
     all_character_analyses = analysis_data.get('character_analyses', [])
     all_lorebook_entries = analysis_data.get('lorebook_entries', [])
 
     if not all_character_analyses:
-        return {'success': False, 'message': '分析数据为空'}
+        return fail_result('分析数据为空')
 
     analyses_text = json.dumps(all_character_analyses, ensure_ascii=False)
     raw_estimated_tokens = runtime.estimate_tokens(analyses_text)
@@ -134,15 +134,14 @@ def run_generate_character_card_task(
             with open(json_output_path, 'r', encoding='utf-8') as f:
                 chara_card_json = json.load(f)
         except Exception as e:
-            return {
-                'success': True,
-                'message': f'角色卡生成完成 (JSON): {json_output_path}',
-                'output_path': json_output_path,
-                'fields_written': result.get('fields_written', []),
-                'image_path': image_path,
-                'warning': f'无法读取JSON用于PNG嵌入: {str(e)}',
-                'checkpoint_id': checkpoint_id
-            }
+            return ok_result(
+                message=f'角色卡生成完成 (JSON): {json_output_path}',
+                output_path=json_output_path,
+                fields_written=result.get('fields_written', []),
+                image_path=image_path,
+                warning=f'无法读取JSON用于PNG嵌入: {str(e)}',
+                checkpoint_id=checkpoint_id
+            )
 
         png_output_path = None
         conversion_error = None
@@ -195,14 +194,13 @@ def run_generate_character_card_task(
                 except Exception as e:
                     print(f"Failed to clean up VNDB image: {e}")
 
-        response_data = {
-            'success': True,
-            'message': f'角色卡生成完成: {json_output_path}',
-            'output_path': json_output_path,
-            'fields_written': result.get('fields_written', []),
-            'result': result.get('result', ''),
-            'checkpoint_id': checkpoint_id
-        }
+        response_data = ok_result(
+            message=f'角色卡生成完成: {json_output_path}',
+            output_path=json_output_path,
+            fields_written=result.get('fields_written', []),
+            result=result.get('result', ''),
+            checkpoint_id=checkpoint_id
+        )
 
         if image_path:
             response_data['image_path'] = image_path
@@ -215,13 +213,9 @@ def run_generate_character_card_task(
 
     if result.get('can_resume'):
         runtime.ckpt_manager.mark_failed(checkpoint_id, result.get('message', '生成失败'))
-        return {
-            'success': False,
-            'message': result.get('message', '生成失败'),
-            'checkpoint_id': checkpoint_id,
-            'can_resume': True
-        }
-    return {
-        'success': False,
-        'message': result.get('message', '生成失败')
-    }
+        return fail_result(
+            result.get('message', '生成失败'),
+            checkpoint_id=checkpoint_id,
+            can_resume=True
+        )
+    return fail_result(result.get('message', '生成失败'))
