@@ -1,9 +1,9 @@
-import litellm
 import json
 import sys
 import os
 from datetime import datetime
 from ..gateways.tool_gateway import DefaultToolGateway
+from .transport import CompletionTransport
 from ..utils.prompt_builders import (
     build_character_card_language_instruction,
     build_character_card_system_prompt,
@@ -69,6 +69,7 @@ class LLMInteraction:
         self.apikey = ""
         self.max_retries = 3
         self.tool_gateway = DefaultToolGateway()
+        self.transport = CompletionTransport()
     
     def set_config(self, baseurl, modelname, apikey, max_retries=None):
         self.baseurl = baseurl
@@ -164,8 +165,6 @@ class LLMInteraction:
             print(f"[LLM] Request failed")
     
     def send_message(self, messages, tools=None, max_retries=None, use_counter=True):
-        import time
-        
         if max_retries is None:
             max_retries = self.max_retries
         model = self._normalize_model_name()
@@ -173,22 +172,28 @@ class LLMInteraction:
         kwargs = self._build_completion_kwargs(model=model, messages=messages, tools=tools)
         
         print(f"[LLM] Attempt 1/{max_retries}")
-        
-        for attempt in range(max_retries):
-            try:
-                response = litellm.completion(**kwargs)
-                self._log_request_success(use_counter=use_counter)
-                self._log_response_preview(response)
-                return response
-            except Exception as e:
-                print(f"[LLM] Attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt
-                    print(f"[LLM] Retrying in {wait_time} seconds...")
-                    time.sleep(wait_time)
-                else:
-                    self._log_request_failed(use_counter=use_counter)
-                    return None
+
+        def _on_attempt_failed(attempt, error, retries):
+            print(f"[LLM] Attempt {attempt + 1} failed: {error}")
+
+        def _on_retry_wait(wait_time, attempt, retries):
+            print(f"[LLM] Retrying in {wait_time} seconds...")
+
+        def _on_success(response):
+            self._log_request_success(use_counter=use_counter)
+            self._log_response_preview(response)
+
+        def _on_final_failure(error):
+            self._log_request_failed(use_counter=use_counter)
+
+        return self.transport.complete_with_retry(
+            kwargs=kwargs,
+            max_retries=max_retries,
+            on_attempt_failed=_on_attempt_failed,
+            on_retry_wait=_on_retry_wait,
+            on_success=_on_success,
+            on_final_failure=_on_final_failure,
+        )
     
     def get_tool_response(self, response):
         if response and hasattr(response, 'choices') and response.choices:
