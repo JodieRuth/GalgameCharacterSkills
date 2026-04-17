@@ -1,11 +1,17 @@
 import json
-import sys
-import os
-from datetime import datetime
 from ..gateways.tool_gateway import DefaultToolGateway
 from .transport import CompletionTransport
 from .runtime import LLMRequestRuntime
 from .tool_loop import run_character_card_tool_loop
+from .task_flows import (
+    build_write_field_tools,
+    build_initial_character_card_fields,
+    apply_checkpoint_fields,
+    build_character_card_messages,
+    build_character_card_template_path,
+    build_character_card_field_mappings,
+    build_character_card_success_result,
+)
 from .prompts import (
     build_summarize_content_payload,
     build_summarize_chara_card_payload,
@@ -15,7 +21,6 @@ from .prompts import (
 from ..utils.prompt_builders import (
     build_character_card_language_instruction,
     build_character_card_system_prompt,
-    build_character_card_user_prompt,
     build_integrate_analyses_system_prompt,
     build_integrate_analyses_user_prompt,
 )
@@ -232,68 +237,20 @@ class LLMInteraction:
         
         vndb_ref = _format_vndb_section(vndb_data, "VNDB REFERENCE DATA (HIGHEST PRIORITY - Use these values as authoritative source for character appearance and basic info)", bullet="")
         
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "write_field",
-                    "description": "Write a specific field to the character card JSON file. Call this tool multiple times to write different fields.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "field_name": {
-                                "type": "string",
-                                "description": "The name of the field to write. Must be one of: name, description, personality, first_mes, mes_example, scenario, system_prompt, post_history_instructions, depth_prompt",
-                                "enum": ["name", "description", "personality", "first_mes", "mes_example", "scenario",
-                                        "system_prompt", "post_history_instructions", "depth_prompt"]
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "The content to write for this field. For string fields, provide the text. For list fields (like personality traits), provide a JSON array string."
-                            },
-                            "is_complete": {
-                                "type": "boolean",
-                                "description": "Set to true if this is the last field you want to write. The system will finalize the character card after this."
-                            }
-                        },
-                        "required": ["field_name", "content"]
-                    }
-                }
-            }
-        ]
+        tools = build_write_field_tools()
         
         merged_entries = self.tool_gateway.merge_lorebook_entries(all_lorebook_entries)
         lorebook_entries = self.tool_gateway.build_lorebook_entries(merged_entries, start_id=0)
-        
-        base_name = role_name
-        if vndb_data and vndb_data.get('name'):
-            base_name = vndb_data['name']
-        
-        fields_data = {
-            "name": base_name,
-            "description": "",
-            "personality": "",
-            "first_mes": "",
-            "mes_example": "",
-            "scenario": "",
-            "system_prompt": "",
-            "post_history_instructions": "",
-            "depth_prompt": "",
-            "creatorcomment": f"Character card for {base_name}" + (f" (VNDB: {vndb_data.get('vndb_id', '')})" if vndb_data else ""),
-            "world_name": base_name,
-            "create_date": datetime.now().isoformat(),
-            "creator": creator or "AI Character Generator",
-            "tags": ["character", base_name.lower().replace(" ", "_")],
-            "character_book_entries": lorebook_entries
-        }
+        fields_data = build_initial_character_card_fields(
+            role_name=role_name,
+            creator=creator,
+            vndb_data=vndb_data,
+            lorebook_entries=lorebook_entries,
+        )
 
         is_resuming = ckpt_messages is not None and len(ckpt_messages) > 0
-        if is_resuming and ckpt_fields_data:
-            for key in fields_data:
-                if key in ckpt_fields_data and ckpt_fields_data[key]:
-                    if key == "character_book_entries":
-                        continue
-                    fields_data[key] = ckpt_fields_data[key]
+        if is_resuming:
+            apply_checkpoint_fields(fields_data, ckpt_fields_data)
         
         language_instruction = build_character_card_language_instruction(output_language, LANG_NAMES)
         integrated_analysis_json = json.dumps(integrated_analysis, ensure_ascii=False, indent=2)
@@ -304,15 +261,13 @@ class LLMInteraction:
             language_instruction=language_instruction,
         )
 
-        if is_resuming:
-            messages = ckpt_messages
-            tool_call_count = ckpt_iteration_count or 0
-        else:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": build_character_card_user_prompt(role_name)}
-            ]
-            tool_call_count = 0
+        messages, tool_call_count = build_character_card_messages(
+            is_resuming=is_resuming,
+            ckpt_messages=ckpt_messages,
+            ckpt_iteration_count=ckpt_iteration_count,
+            system_prompt=system_prompt,
+            role_name=role_name,
+        )
 
         loop_result = run_character_card_tool_loop(
             send_message=self.send_message,
@@ -327,34 +282,16 @@ class LLMInteraction:
         if not loop_result.get("success"):
             return loop_result
         
-        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils', 'chara_card_template.json')
-        
-        field_mappings = {
-            "{{name}}": fields_data["name"],
-            "{{description}}": fields_data["description"],
-            "{{personality}}": fields_data["personality"],
-            "{{first_mes}}": fields_data["first_mes"],
-            "{{mes_example}}": fields_data["mes_example"],
-            "{{scenario}}": fields_data["scenario"],
-            "{{create_date}}": fields_data["create_date"],
-            "{{creatorcomment}}": fields_data["creatorcomment"],
-            "{{system_prompt}}": fields_data["system_prompt"],
-            "{{post_history_instructions}}": fields_data["post_history_instructions"],
-            "{{tags}}": fields_data["tags"],
-            "{{creator}}": fields_data["creator"],
-            "{{world_name}}": fields_data["world_name"],
-            "{{depth_prompt}}": fields_data["depth_prompt"],
-            "{{character_book_entries}}": fields_data["character_book_entries"],
-        }
+        template_path = build_character_card_template_path()
+        field_mappings = build_character_card_field_mappings(fields_data)
         
         result = self.tool_gateway.fill_json_template(template_path, output_path, field_mappings)
         
-        return {
-            'success': True,
-            'output_path': output_path,
-            'fields_written': [k for k, v in fields_data.items() if v and k != 'character_book_entries'],
-            'result': result
-        }
+        return build_character_card_success_result(
+            output_path=output_path,
+            fields_data=fields_data,
+            result=result,
+        )
     
     def _integrate_analyses(self, role_name, all_analyses, vndb_data=None):
         vndb_section = _format_vndb_section(vndb_data, "## VNDB Character Information", bullet="")
