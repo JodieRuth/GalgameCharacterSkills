@@ -974,7 +974,7 @@ def resume_checkpoint(checkpoint_id):
         return jsonify(error)
     
     task_type = ckpt['task_type']
-    input_params = ckpt.get('input_params', {})
+    input_params = dict(ckpt.get('input_params', {}))
     input_params['resume_checkpoint_id'] = checkpoint_id
     
     extra_params = _json_body()
