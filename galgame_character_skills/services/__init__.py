@@ -21,6 +21,7 @@ from .llm_factory import build_llm_client
 from .token_utils import estimate_tokens_from_text
 from .llm_budget import get_model_context_limit, calculate_compression_threshold
 from .path_utils import get_base_dir, get_resource_path
+from .app_runtime import open_browser, configure_werkzeug_logging
 
 __all__ = [
     "scan_files_result",
@@ -50,4 +51,6 @@ __all__ = [
     "calculate_compression_threshold",
     "get_base_dir",
     "get_resource_path",
+    "open_browser",
+    "configure_werkzeug_logging",
 ]

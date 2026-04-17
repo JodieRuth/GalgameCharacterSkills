@@ -26,7 +26,7 @@ from .services.path_utils import get_base_dir, get_resource_path
 from .services.llm_factory import build_llm_client
 from .services.token_utils import estimate_tokens_from_text
 from .services.llm_budget import get_model_context_limit
-from services.app_runtime import open_browser, configure_werkzeug_logging
+from .services.app_runtime import open_browser, configure_werkzeug_logging
 
 
 app = Flask(__name__, template_folder=get_resource_path('utils'))
