@@ -10,6 +10,10 @@ from ..utils.token_utils import estimate_tokens_from_text
 from ..utils.vndb_utils import load_r18_traits, clean_vndb_data
 from ..gateways.llm_gateway import DefaultLLMGateway, LLMGateway
 from ..gateways.tool_gateway import DefaultToolGateway, ToolGateway
+from ..gateways.storage_gateway import DefaultStorageGateway, StorageGateway
+from ..gateways.checkpoint_gateway import DefaultCheckpointGateway, CheckpointGateway
+from ..gateways.vndb_gateway import DefaultVndbGateway, VndbGateway
+from ..gateways.executor_gateway import DefaultExecutorGateway, ExecutorGateway
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,10 @@ class AppDependencies:
 class TaskRuntimeDependencies:
     file_processor: FileProcessor
     ckpt_manager: CheckpointManager
+    checkpoint_gateway: CheckpointGateway
+    storage_gateway: StorageGateway
+    vndb_gateway: VndbGateway
+    executor_gateway: ExecutorGateway
     clean_vndb_data: Callable[[Any], Any]
     get_base_dir: Callable[[], str]
     estimate_tokens: Callable[[str], int]
@@ -45,6 +53,10 @@ def build_task_runtime(deps: AppDependencies):
     return TaskRuntimeDependencies(
         file_processor=deps.file_processor,
         ckpt_manager=deps.ckpt_manager,
+        checkpoint_gateway=DefaultCheckpointGateway(deps.ckpt_manager),
+        storage_gateway=DefaultStorageGateway(),
+        vndb_gateway=DefaultVndbGateway(),
+        executor_gateway=DefaultExecutorGateway(),
         clean_vndb_data=clean_vndb_data,
         get_base_dir=get_base_dir,
         estimate_tokens=estimate_tokens_from_text,
