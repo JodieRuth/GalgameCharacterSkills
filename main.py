@@ -709,16 +709,21 @@ def _compress_analyses_with_llm(analyses, llm_client, target_budget_tokens=11500
     return compressed_analyses
 
 
-def get_llm_client():
-    data = request.json if request.is_json else {}
-    baseurl = data.get('baseurl', '')
-    modelname = data.get('modelname', '')
-    apikey = data.get('apikey', '')
-    max_retries = data.get('max_retries', 0) or None
+def build_llm_client(config=None):
+    config = config or {}
+    baseurl = config.get('baseurl', '')
+    modelname = config.get('modelname', '')
+    apikey = config.get('apikey', '')
+    max_retries = config.get('max_retries', 0) or None
     client = LLMInteraction()
     if baseurl or modelname or apikey:
         client.set_config(baseurl, modelname, apikey, max_retries=max_retries)
     return client
+
+
+def get_llm_client():
+    data = request.json if request.is_json else {}
+    return build_llm_client(data)
 
 @app.route('/')
 def index():
@@ -1066,7 +1071,7 @@ def _do_summarize(data):
     if not file_paths:
         return jsonify({'success': False, 'message': '请先选择文件'})
     
-    llm_interaction = get_llm_client()
+    llm_interaction = build_llm_client(config)
     current_slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
     LLMInteraction.set_total_requests(len(current_slices))
     
@@ -1185,6 +1190,12 @@ def generate_skills_folder(data):
     compression_mode = data.get('compression_mode', 'original')
     force_no_compression = data.get('force_no_compression', False)
     resume_checkpoint_id = data.get('resume_checkpoint_id')
+    config = {
+        'baseurl': data.get('baseurl', ''),
+        'modelname': data.get('modelname', ''),
+        'apikey': data.get('apikey', ''),
+        'max_retries': data.get('max_retries', 0) or None
+    }
 
     if resume_checkpoint_id:
         ckpt, error = _try_resume_checkpoint(resume_checkpoint_id)
@@ -1246,7 +1257,7 @@ def generate_skills_folder(data):
     if not force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if compression_mode == 'llm':
             print(f"Using LLM compression")
-            llm_interaction = get_llm_client()
+            llm_interaction = build_llm_client(config)
             summaries_text = _compress_with_llm(summary_files, llm_interaction, target_budget_tokens, checkpoint_id=checkpoint_id)
             context_mode = "llm_compressed"
         else:
@@ -1284,7 +1295,7 @@ def generate_skills_folder(data):
         f"compression_ratio={compression_ratio:.2%} "
         f"strategy={strategy_name}"
     )
-    llm_interaction = get_llm_client()
+    llm_interaction = build_llm_client(config)
     
     if not resume_checkpoint_id:
         messages, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
@@ -1497,6 +1508,12 @@ def generate_character_card(data):
     compression_mode = data.get('compression_mode', 'original')
     force_no_compression = data.get('force_no_compression', False)
     resume_checkpoint_id = data.get('resume_checkpoint_id')
+    config = {
+        'baseurl': data.get('baseurl', ''),
+        'modelname': data.get('modelname', ''),
+        'apikey': data.get('apikey', ''),
+        'max_retries': data.get('max_retries', 0) or None
+    }
 
     if resume_checkpoint_id:
         ckpt, error = _try_resume_checkpoint(resume_checkpoint_id)
@@ -1577,7 +1594,7 @@ def generate_character_card(data):
     if not force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if compression_mode == 'llm':
             print(f"Using LLM compression for analyses")
-            llm_interaction = get_llm_client()
+            llm_interaction = build_llm_client(config)
             compressed_analyses = _compress_analyses_with_llm(all_character_analyses, llm_interaction, target_budget_tokens, checkpoint_id=checkpoint_id)
             all_character_analyses = compressed_analyses
             context_mode = "llm_compressed"
@@ -1614,7 +1631,7 @@ def generate_character_card(data):
         else:
             image_path = None
 
-    llm_interaction = get_llm_client()
+    llm_interaction = build_llm_client(config)
     result = llm_interaction.generate_character_card_with_tools(
         role_name,
         all_character_analyses,
