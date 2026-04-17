@@ -23,12 +23,8 @@ from .utils.app_runtime import open_browser
 from .web import get_template_dir
 from .application import (
     build_app_dependencies,
+    build_task_runtime,
     get_base_dir,
-    clean_vndb_data,
-    estimate_tokens_from_text,
-    build_llm_client,
-    download_vndb_image,
-    embed_json_in_png,
 )
 
 
@@ -36,6 +32,7 @@ app = Flask(__name__, template_folder=get_template_dir())
 CORS(app)
 
 deps = build_app_dependencies()
+task_runtime = build_task_runtime(deps)
 
 
 def _json_body():
@@ -77,31 +74,15 @@ def slice_file():
 
 @app.route('/api/summarize', methods=['POST'])
 def summarize():
-    return jsonify(summarize_result(_json_body(), deps.file_processor, deps.ckpt_manager, clean_vndb_data))
+    return jsonify(summarize_result(_json_body(), task_runtime))
 
 
 def _generate_skills_folder(payload):
-    return generate_skills_folder_result(
-        data=payload,
-        ckpt_manager=deps.ckpt_manager,
-        clean_vndb_data=clean_vndb_data,
-        get_base_dir=get_base_dir,
-        estimate_tokens=estimate_tokens_from_text,
-        build_llm_client=build_llm_client
-    )
+    return generate_skills_folder_result(data=payload, runtime=task_runtime)
 
 
 def _generate_character_card(payload):
-    return generate_character_card_result(
-        data=payload,
-        ckpt_manager=deps.ckpt_manager,
-        clean_vndb_data=clean_vndb_data,
-        get_base_dir=get_base_dir,
-        estimate_tokens=estimate_tokens_from_text,
-        build_llm_client=build_llm_client,
-        download_vndb_image=download_vndb_image,
-        embed_json_in_png=embed_json_in_png
-    )
+    return generate_character_card_result(data=payload, runtime=task_runtime)
 
 @app.route('/api/skills', methods=['POST'])
 def generate_skills():
@@ -134,9 +115,7 @@ def resume_checkpoint(checkpoint_id):
         extra_params=_json_body(),
         summarize_handler=lambda data: summarize_result(
             data=data,
-            file_processor=deps.file_processor,
-            ckpt_manager=deps.ckpt_manager,
-            clean_vndb_data=clean_vndb_data
+            runtime=task_runtime
         ),
         generate_skills_handler=_generate_skills_folder,
         generate_chara_card_handler=_generate_character_card

@@ -17,24 +17,20 @@ from ..domain import GenerateSkillsRequest
 
 def run_generate_skills_task(
     data,
-    ckpt_manager,
-    clean_vndb_data,
-    get_base_dir,
-    estimate_tokens,
-    build_llm_client
+    runtime
 ):
-    request_data = GenerateSkillsRequest.from_payload(data, clean_vndb_data)
+    request_data = GenerateSkillsRequest.from_payload(data, runtime.clean_vndb_data)
     config = build_llm_config(data)
 
     if request_data.resume_checkpoint_id:
-        ckpt, error = load_resumable_checkpoint(ckpt_manager, request_data.resume_checkpoint_id)
+        ckpt, error = load_resumable_checkpoint(runtime.ckpt_manager, request_data.resume_checkpoint_id)
         if error:
             return error
 
         request_data.apply_checkpoint(ckpt['input_params'])
         checkpoint_id = request_data.resume_checkpoint_id
 
-        llm_state = ckpt_manager.load_llm_state(checkpoint_id)
+        llm_state = runtime.ckpt_manager.load_llm_state(checkpoint_id)
         messages = llm_state.get('messages', [])
         all_results = llm_state.get('all_results', [])
         iteration = llm_state.get('iteration_count', 0)
@@ -42,7 +38,7 @@ def run_generate_skills_task(
 
         print(f"Resuming generate_skills: iteration {iteration}, {len(all_results)} results so far")
     else:
-        checkpoint_id = ckpt_manager.create_checkpoint(
+        checkpoint_id = runtime.ckpt_manager.create_checkpoint(
             task_type='generate_skills',
             input_params=request_data.to_checkpoint_input()
         )
@@ -50,13 +46,13 @@ def run_generate_skills_task(
         all_results = []
         iteration = 0
 
-    script_dir = get_base_dir()
+    script_dir = runtime.get_base_dir()
     summary_files = find_role_summary_markdown_files(script_dir, request_data.role_name)
     if not summary_files:
         return {'success': False, 'message': f'未找到角色 "{request_data.role_name}" 的归纳文件，请先完成归纳'}
     raw_full_text = build_full_skill_generation_context(summary_files)
     raw_total_chars = len(raw_full_text)
-    raw_estimated_tokens = estimate_tokens(raw_full_text)
+    raw_estimated_tokens = runtime.estimate_tokens(raw_full_text)
     context_limit = get_model_context_limit(request_data.model_name)
     context_limit_tokens = calculate_compression_threshold(context_limit)
     target_budget_tokens = context_limit_tokens
@@ -67,14 +63,14 @@ def run_generate_skills_task(
     if not request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if request_data.compression_mode == 'llm':
             print("Using LLM compression")
-            llm_interaction = build_llm_client(config)
+            llm_interaction = runtime.build_llm_client(config)
             summaries_text = compress_summary_files_with_llm(
                 summary_files=summary_files,
                 llm_client=llm_interaction,
                 target_budget_tokens=target_budget_tokens,
                 checkpoint_id=checkpoint_id,
-                ckpt_manager=ckpt_manager,
-                estimate_tokens=estimate_tokens
+                ckpt_manager=runtime.ckpt_manager,
+                estimate_tokens=runtime.estimate_tokens
             )
             context_mode = "llm_compressed"
         else:
@@ -96,7 +92,7 @@ def run_generate_skills_task(
     if not summaries_text:
         return {'success': False, 'message': f'未能读取角色 "{request_data.role_name}" 的归纳内容'}
     compressed_chars = len(summaries_text)
-    estimated_tokens = estimate_tokens(summaries_text)
+    estimated_tokens = runtime.estimate_tokens(summaries_text)
     compression_ratio = (compressed_chars / raw_total_chars) if raw_total_chars else 0
     strategy_name = {
         'full': 'full_context',
@@ -112,7 +108,7 @@ def run_generate_skills_task(
         f"compression_ratio={compression_ratio:.2%} "
         f"strategy={strategy_name}"
     )
-    llm_interaction = build_llm_client(config)
+    llm_interaction = runtime.build_llm_client(config)
 
     if not request_data.resume_checkpoint_id:
         messages, tools = llm_interaction.generate_skills_folder_init(
@@ -121,7 +117,7 @@ def run_generate_skills_task(
             request_data.output_language,
             request_data.vndb_data
         )
-        ckpt_manager.update_progress(checkpoint_id, total_steps=20, current_phase='tool_call_loop')
+        runtime.ckpt_manager.update_progress(checkpoint_id, total_steps=20, current_phase='tool_call_loop')
     else:
         _, tools = llm_interaction.generate_skills_folder_init(
             summaries_text,
@@ -133,17 +129,17 @@ def run_generate_skills_task(
     max_iterations = 20
     while iteration < max_iterations:
         iteration += 1
-        ckpt_manager.save_llm_state(
+        runtime.ckpt_manager.save_llm_state(
             checkpoint_id, messages=messages,
             iteration_count=iteration, all_results=all_results
         )
         response = llm_interaction.send_message(messages, tools, use_counter=False)
         if not response:
-            ckpt_manager.save_llm_state(
+            runtime.ckpt_manager.save_llm_state(
                 checkpoint_id, messages=messages,
                 last_response=None, iteration_count=iteration, all_results=all_results
             )
-            ckpt_manager.mark_failed(checkpoint_id, 'LLM交互失败')
+            runtime.ckpt_manager.mark_failed(checkpoint_id, 'LLM交互失败')
             return {
                 'success': False, 'message': 'LLM交互失败',
                 'checkpoint_id': checkpoint_id, 'can_resume': True
@@ -173,11 +169,11 @@ def run_generate_skills_task(
                 "content": json.dumps({"success": True, "result": result})
             }
             messages.append(tool_response)
-        ckpt_manager.save_llm_state(
+        runtime.ckpt_manager.save_llm_state(
             checkpoint_id, messages=messages,
             last_response=response, iteration_count=iteration, all_results=all_results
         )
-    script_dir = get_base_dir()
+    script_dir = runtime.get_base_dir()
     main_skill_dir = os.path.join(script_dir, f"{request_data.role_name}-skill-main")
     skill_md_path = os.path.join(main_skill_dir, "SKILL.md")
     vndb_result = append_vndb_info_to_skill_md(skill_md_path, request_data.vndb_data)
@@ -186,7 +182,7 @@ def run_generate_skills_task(
     copy_result = create_code_skill_copy(script_dir, request_data.role_name)
     if copy_result:
         all_results.append(copy_result)
-    ckpt_manager.mark_completed(checkpoint_id)
+    runtime.ckpt_manager.mark_completed(checkpoint_id)
     return {
         'success': True,
         'message': f'技能文件夹生成完成，共执行 {len(all_results)} 次文件写入',

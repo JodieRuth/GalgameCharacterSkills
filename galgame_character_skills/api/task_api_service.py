@@ -3,52 +3,24 @@ from ..application.skills_service import run_generate_skills_task
 from ..application.character_card_service import run_generate_character_card_task
 
 
-def summarize_result(data, file_processor, ckpt_manager, clean_vndb_data):
+def summarize_result(data, runtime):
     return run_summarize_task(
         data=data,
-        file_processor=file_processor,
-        ckpt_manager=ckpt_manager,
-        clean_vndb_data=clean_vndb_data
+        runtime=runtime
     )
 
 
-def generate_skills_folder_result(
-    data,
-    ckpt_manager,
-    clean_vndb_data,
-    get_base_dir,
-    estimate_tokens,
-    build_llm_client
-):
+def generate_skills_folder_result(data, runtime):
     return run_generate_skills_task(
         data=data,
-        ckpt_manager=ckpt_manager,
-        clean_vndb_data=clean_vndb_data,
-        get_base_dir=get_base_dir,
-        estimate_tokens=estimate_tokens,
-        build_llm_client=build_llm_client
+        runtime=runtime
     )
 
 
-def generate_character_card_result(
-    data,
-    ckpt_manager,
-    clean_vndb_data,
-    get_base_dir,
-    estimate_tokens,
-    build_llm_client,
-    download_vndb_image,
-    embed_json_in_png
-):
+def generate_character_card_result(data, runtime):
     return run_generate_character_card_task(
         data=data,
-        ckpt_manager=ckpt_manager,
-        clean_vndb_data=clean_vndb_data,
-        get_base_dir=get_base_dir,
-        estimate_tokens=estimate_tokens,
-        build_llm_client=build_llm_client,
-        download_vndb_image=download_vndb_image,
-        embed_json_in_png=embed_json_in_png
+        runtime=runtime
     )
 
 

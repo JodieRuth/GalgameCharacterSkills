@@ -11,33 +11,27 @@ from ..domain import GenerateCharacterCardRequest
 
 def run_generate_character_card_task(
     data,
-    ckpt_manager,
-    clean_vndb_data,
-    get_base_dir,
-    estimate_tokens,
-    build_llm_client,
-    download_vndb_image,
-    embed_json_in_png
+    runtime
 ):
-    request_data = GenerateCharacterCardRequest.from_payload(data, clean_vndb_data)
+    request_data = GenerateCharacterCardRequest.from_payload(data, runtime.clean_vndb_data)
     config = build_llm_config(data)
 
     if request_data.resume_checkpoint_id:
-        ckpt, error = load_resumable_checkpoint(ckpt_manager, request_data.resume_checkpoint_id)
+        ckpt, error = load_resumable_checkpoint(runtime.ckpt_manager, request_data.resume_checkpoint_id)
         if error:
             return error
 
         request_data.apply_checkpoint(ckpt['input_params'])
         checkpoint_id = request_data.resume_checkpoint_id
 
-        llm_state = ckpt_manager.load_llm_state(checkpoint_id)
+        llm_state = runtime.ckpt_manager.load_llm_state(checkpoint_id)
         fields_data = llm_state.get('fields_data', {})
         messages = llm_state.get('messages', [])
         iteration_count = llm_state.get('iteration_count', 0)
 
         print(f"Resuming generate_chara_card: iteration {iteration_count}, fields: {list(fields_data.keys())}")
     else:
-        checkpoint_id = ckpt_manager.create_checkpoint(
+        checkpoint_id = runtime.ckpt_manager.create_checkpoint(
             task_type='generate_chara_card',
             input_params=request_data.to_checkpoint_input()
         )
@@ -45,7 +39,7 @@ def run_generate_character_card_task(
         messages = []
         iteration_count = 0
 
-    script_dir = get_base_dir()
+    script_dir = runtime.get_base_dir()
     analysis_file = find_role_analysis_summary_file(script_dir, request_data.role_name)
 
     if not analysis_file:
@@ -64,7 +58,7 @@ def run_generate_character_card_task(
         return {'success': False, 'message': '分析数据为空'}
 
     analyses_text = json.dumps(all_character_analyses, ensure_ascii=False)
-    raw_estimated_tokens = estimate_tokens(analyses_text)
+    raw_estimated_tokens = runtime.estimate_tokens(analyses_text)
     context_limit = get_model_context_limit(request_data.model_name)
     context_limit_tokens = calculate_compression_threshold(context_limit)
     target_budget_tokens = context_limit_tokens
@@ -75,14 +69,14 @@ def run_generate_character_card_task(
     if not request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
         if request_data.compression_mode == 'llm':
             print("Using LLM compression for analyses")
-            llm_interaction = build_llm_client(config)
+            llm_interaction = runtime.build_llm_client(config)
             compressed_analyses = compress_analyses_with_llm(
                 analyses=all_character_analyses,
                 llm_client=llm_interaction,
                 target_budget_tokens=target_budget_tokens,
                 checkpoint_id=checkpoint_id,
-                ckpt_manager=ckpt_manager,
-                estimate_tokens=estimate_tokens
+                ckpt_manager=runtime.ckpt_manager,
+                estimate_tokens=runtime.estimate_tokens
             )
             all_character_analyses = compressed_analyses
             context_mode = "llm_compressed"
@@ -93,7 +87,7 @@ def run_generate_character_card_task(
             context_mode = "compressed"
 
         compressed_text = json.dumps(all_character_analyses, ensure_ascii=False)
-        compressed_tokens = estimate_tokens(compressed_text)
+        compressed_tokens = runtime.estimate_tokens(compressed_text)
         print(f"Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
     else:
         if request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
@@ -110,16 +104,16 @@ def run_generate_character_card_task(
     image_path = None
     if request_data.vndb_data_raw and request_data.vndb_data_raw.get('image_url'):
         image_ext = os.path.splitext(request_data.vndb_data_raw['image_url'])[1] or '.jpg'
-        ckpt_temp_dir = ckpt_manager.get_temp_dir(checkpoint_id)
+        ckpt_temp_dir = runtime.ckpt_manager.get_temp_dir(checkpoint_id)
         image_path = os.path.join(ckpt_temp_dir, f"{request_data.role_name}_vndb{image_ext}")
         if os.path.exists(image_path):
             print(f"VNDB image already exists: {image_path}")
-        elif download_vndb_image(request_data.vndb_data_raw['image_url'], image_path):
+        elif runtime.download_vndb_image(request_data.vndb_data_raw['image_url'], image_path):
             print(f"Downloaded VNDB image to: {image_path}")
         else:
             image_path = None
 
-    llm_interaction = build_llm_client(config)
+    llm_interaction = runtime.build_llm_client(config)
     result = llm_interaction.generate_character_card_with_tools(
         request_data.role_name,
         all_character_analyses,
@@ -135,7 +129,7 @@ def run_generate_character_card_task(
     )
 
     if result.get('success'):
-        ckpt_manager.mark_completed(checkpoint_id, final_output_path=json_output_path)
+        runtime.ckpt_manager.mark_completed(checkpoint_id, final_output_path=json_output_path)
         try:
             with open(json_output_path, 'r', encoding='utf-8') as f:
                 chara_card_json = json.load(f)
@@ -156,7 +150,7 @@ def run_generate_character_card_task(
             png_output_path = os.path.join(output_dir, f"{request_data.role_name}_chara_card.png")
 
             if image_path.lower().endswith('.png'):
-                if embed_json_in_png(chara_card_json, image_path, png_output_path):
+                if runtime.embed_json_in_png(chara_card_json, image_path, png_output_path):
                     print(f"Created PNG character card: {png_output_path}")
                 else:
                     png_output_path = None
@@ -174,10 +168,10 @@ def run_generate_character_card_task(
                             img = background
                     else:
                         img = img.convert('RGB')
-                    temp_png = os.path.join(ckpt_manager.get_temp_dir(checkpoint_id), f"{request_data.role_name}_temp.png")
+                    temp_png = os.path.join(runtime.ckpt_manager.get_temp_dir(checkpoint_id), f"{request_data.role_name}_temp.png")
                     img.save(temp_png, 'PNG', optimize=True)
                     print(f"Converted image to PNG: {temp_png}")
-                    if embed_json_in_png(chara_card_json, temp_png, png_output_path):
+                    if runtime.embed_json_in_png(chara_card_json, temp_png, png_output_path):
                         print(f"Created PNG character card with embedded JSON: {png_output_path}")
                     else:
                         png_output_path = None
@@ -220,7 +214,7 @@ def run_generate_character_card_task(
         return response_data
 
     if result.get('can_resume'):
-        ckpt_manager.mark_failed(checkpoint_id, result.get('message', '生成失败'))
+        runtime.ckpt_manager.mark_failed(checkpoint_id, result.get('message', '生成失败'))
         return {
             'success': False,
             'message': result.get('message', '生成失败'),

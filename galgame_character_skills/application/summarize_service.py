@@ -136,15 +136,15 @@ def _process_single_slice(args, ckpt_manager):
     return result
 
 
-def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
-    request_data = SummarizeRequest.from_payload(data, clean_vndb_data, extract_file_paths)
+def run_summarize_task(data, runtime):
+    request_data = SummarizeRequest.from_payload(data, runtime.clean_vndb_data, extract_file_paths)
 
     if not request_data.role_name:
         return {'success': False, 'message': '请输入角色名称'}
 
     config = build_llm_config(data)
     if request_data.resume_checkpoint_id:
-        ckpt, error = load_resumable_checkpoint(ckpt_manager, request_data.resume_checkpoint_id)
+        ckpt, error = load_resumable_checkpoint(runtime.ckpt_manager, request_data.resume_checkpoint_id)
         if error:
             return error
 
@@ -157,7 +157,7 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
         if not request_data.file_paths:
             return {'success': False, 'message': '请先选择文件'}
 
-        checkpoint_id = ckpt_manager.create_checkpoint(
+        checkpoint_id = runtime.ckpt_manager.create_checkpoint(
             task_type='summarize',
             input_params=request_data.to_checkpoint_input()
         )
@@ -165,7 +165,7 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
     if not request_data.file_paths:
         return {'success': False, 'message': '请先选择文件'}
 
-    current_slices = file_processor.slice_multiple_files(request_data.file_paths, request_data.slice_size_k)
+    current_slices = runtime.file_processor.slice_multiple_files(request_data.file_paths, request_data.slice_size_k)
     LLMInteraction.set_total_requests(len(current_slices))
 
     summaries = []
@@ -186,7 +186,7 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
     os.makedirs(summary_dir, exist_ok=True)
 
     if not request_data.resume_checkpoint_id:
-        ckpt_manager.update_progress(
+        runtime.ckpt_manager.update_progress(
             checkpoint_id,
             total_steps=len(current_slices),
             pending_items=list(range(len(current_slices)))
@@ -212,7 +212,7 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
         ))
 
     with ThreadPoolExecutor(max_workers=request_data.concurrency) as executor:
-        future_to_task = {executor.submit(_process_single_slice, task, ckpt_manager): task for task in tasks}
+        future_to_task = {executor.submit(_process_single_slice, task, runtime.ckpt_manager): task for task in tasks}
 
         for future in as_completed(future_to_task):
             try:
@@ -239,7 +239,7 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
             }, f, ensure_ascii=False, indent=2)
 
     if errors and len(summaries) == 0:
-        ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片全部失败')
+        runtime.ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片全部失败')
         return {
             'success': False,
             'message': f'归纳失败，{len(errors)} 个切片失败',
@@ -251,7 +251,7 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
         }
 
     if errors:
-        ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片失败，可恢复继续处理')
+        runtime.ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片失败，可恢复继续处理')
         return {
             'success': True,
             'message': f'归纳部分完成，{len(errors)} 个切片失败，可通过任务列表继续',
@@ -262,7 +262,7 @@ def run_summarize_task(data, file_processor, ckpt_manager, clean_vndb_data):
             'can_resume': True
         }
 
-    ckpt_manager.mark_completed(checkpoint_id)
+    runtime.ckpt_manager.mark_completed(checkpoint_id)
     return {
         'success': True,
         'message': '归纳完成',
