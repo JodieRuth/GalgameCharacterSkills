@@ -1144,6 +1144,12 @@ Call write_field for each field. Set is_complete=true on the last call."""
         
         result = ToolHandler.fill_json_template(template_path, output_path, field_mappings)
         
+        if result.startswith("Template filling failed"):
+            return {
+                'success': False,
+                'message': result
+            }
+
         return {
             'success': True,
             'output_path': output_path,
