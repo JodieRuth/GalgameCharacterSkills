@@ -3,6 +3,7 @@ from galgame_character_skills.api.file_api_service import (
     calculate_tokens_result,
     slice_file_result,
 )
+from galgame_character_skills.app import create_app
 
 
 class DummyFileProcessor:
@@ -61,3 +62,29 @@ def test_slice_file_result_validation_and_success():
     assert ok["success"] is True
     assert ok["slice_count"] == 2
     assert ok["file_count"] == 2
+
+
+def test_file_routers():
+    class DummyDeps:
+        file_processor = DummyFileProcessor()
+        r18_traits = set()
+
+    class DummyRuntime:
+        checkpoint_gateway = object()
+        vndb_gateway = object()
+
+    app = create_app(app_dependencies=DummyDeps(), task_runtime=DummyRuntime())
+    with app.test_client() as client:
+        token_resp = client.post("/api/files/tokens", json={"file_path": "x.md", "slice_size_k": 50})
+        assert token_resp.status_code == 200
+        token_data = token_resp.get_json()
+        assert token_data["success"] is True
+        assert "token_count" in token_data
+        assert "slice_count" in token_data
+
+        slice_resp = client.post("/api/slice", json={"file_paths": ["a.md", "b.md"], "slice_size_k": 50})
+        assert slice_resp.status_code == 200
+        slice_data = slice_resp.get_json()
+        assert slice_data["success"] is True
+        assert "slice_count" in slice_data
+        assert "file_count" in slice_data
