@@ -737,6 +737,81 @@
         let compressionMode = 'original';
         let vndbData = null;
         let fileTokenCache = {};
+        const CONFIG_STORAGE_KEY = 'gcs_ui_config_v1';
+
+        function _getConfigInputs() {
+            return {
+                baseurl: document.getElementById('baseurl'),
+                modelname: document.getElementById('modelname'),
+                maxRetries: document.getElementById('maxRetries'),
+                outputLanguage: document.getElementById('outputLanguage'),
+                concurrency: document.getElementById('concurrency'),
+                sliceSize: document.getElementById('sliceSize')
+            };
+        }
+
+        function loadLocalConfig() {
+            try {
+                const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return parsed && typeof parsed === 'object' ? parsed : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function saveLocalConfig() {
+            const inputs = _getConfigInputs();
+            const config = {
+                baseurl: inputs.baseurl.value || '',
+                modelname: inputs.modelname.value || '',
+                maxRetries: inputs.maxRetries.value || '',
+                outputLanguage: inputs.outputLanguage.value || '',
+                concurrency: inputs.concurrency.value || '',
+                sliceSize: inputs.sliceSize.value || ''
+            };
+            localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+        }
+
+        function applyLocalConfig(config) {
+            if (!config) return;
+            const inputs = _getConfigInputs();
+            if (typeof config.baseurl === 'string') inputs.baseurl.value = config.baseurl;
+            if (typeof config.modelname === 'string') inputs.modelname.value = config.modelname;
+            if (typeof config.maxRetries === 'string' || typeof config.maxRetries === 'number') inputs.maxRetries.value = config.maxRetries;
+            if (typeof config.outputLanguage === 'string' && config.outputLanguage) inputs.outputLanguage.value = config.outputLanguage;
+            if (typeof config.concurrency === 'string' || typeof config.concurrency === 'number') inputs.concurrency.value = config.concurrency;
+            if (typeof config.sliceSize === 'string' || typeof config.sliceSize === 'number') inputs.sliceSize.value = config.sliceSize;
+        }
+
+        async function applyServerConfigDefaults() {
+            const local = loadLocalConfig();
+            if (local) {
+                applyLocalConfig(local);
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/config');
+                const result = await response.json();
+                if (!result.success) return;
+
+                const inputs = _getConfigInputs();
+                if (result.baseurl) inputs.baseurl.value = result.baseurl;
+                if (result.modelname) inputs.modelname.value = result.modelname;
+                if (result.max_retries) inputs.maxRetries.value = result.max_retries;
+            } catch (e) {
+            }
+        }
+
+        function bindConfigPersistence() {
+            const inputs = _getConfigInputs();
+            Object.values(inputs).forEach((el) => {
+                el.addEventListener('change', saveLocalConfig);
+                el.addEventListener('blur', saveLocalConfig);
+            });
+        }
         
         function log(message, type = 'normal') {
             const logContent = document.getElementById('logContent');
@@ -1090,8 +1165,6 @@
         
         setInterval(scanFiles, 5000);
         
-        scanFiles();
-        
         async function scanRoles() {
             try {
                 const response = await fetch('/api/summaries/roles');
@@ -1128,8 +1201,6 @@
         }
         
         setInterval(scanRoles, 5000);
-        
-        scanRoles();
         
 
         
@@ -1414,7 +1485,15 @@
             }
         }
 
-        startCheckpointAutoRefresh();
+        async function initPage() {
+            await applyServerConfigDefaults();
+            bindConfigPersistence();
+            scanFiles();
+            scanRoles();
+            startCheckpointAutoRefresh();
+        }
+
+        initPage();
     </script>
 </body>
 </html>
