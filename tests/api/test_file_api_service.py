@@ -33,11 +33,14 @@ def test_scan_files_result_success():
     assert result["files"] == ["a.md", "b.txt"]
 
 
-def test_calculate_tokens_result_validation_and_error():
+def test_calculate_tokens_result_requires_file_path():
     fp = DummyFileProcessor()
     no_path = calculate_tokens_result(fp, {})
     assert no_path["success"] is False
 
+
+def test_calculate_tokens_result_handles_processor_error():
+    fp = DummyFileProcessor()
     fp.raise_error = True
     failed = calculate_tokens_result(fp, {"file_path": "x.md"})
     assert failed["success"] is False
@@ -51,12 +54,15 @@ def test_calculate_tokens_result_success():
     assert result["slice_count"] == 3
 
 
-def test_slice_file_result_validation_and_success():
+def test_slice_file_result_requires_files():
     fp = DummyFileProcessor()
     extract = lambda data: []
     result = slice_file_result(fp, {}, extract)
     assert result["success"] is False
 
+
+def test_slice_file_result_success():
+    fp = DummyFileProcessor()
     extract_ok = lambda data: ["a.md", "b.md"]
     ok = slice_file_result(fp, {"slice_size_k": 50}, extract_ok)
     assert ok["success"] is True
@@ -64,7 +70,7 @@ def test_slice_file_result_validation_and_success():
     assert ok["file_count"] == 2
 
 
-def test_file_routers():
+def test_file_routers_tokens_endpoint():
     class DummyDeps:
         file_processor = DummyFileProcessor()
         r18_traits = set()
@@ -82,6 +88,18 @@ def test_file_routers():
         assert "token_count" in token_data
         assert "slice_count" in token_data
 
+
+def test_file_routers_slice_endpoint():
+    class DummyDeps:
+        file_processor = DummyFileProcessor()
+        r18_traits = set()
+
+    class DummyRuntime:
+        checkpoint_gateway = object()
+        vndb_gateway = object()
+
+    app = create_app(app_dependencies=DummyDeps(), task_runtime=DummyRuntime())
+    with app.test_client() as client:
         slice_resp = client.post("/api/slice", json={"file_paths": ["a.md", "b.md"], "slice_size_k": 50})
         assert slice_resp.status_code == 200
         slice_data = slice_resp.get_json()

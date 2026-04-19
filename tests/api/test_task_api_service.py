@@ -7,7 +7,7 @@ def test_generate_skills_result_requires_role_name():
     assert "角色名称" in result["message"]
 
 
-def test_generate_skills_result_dispatches_by_mode():
+def test_generate_skills_result_dispatches_to_skills_handler():
     calls = {"skills": 0, "card": 0}
 
     def skills_handler(data):
@@ -19,8 +19,23 @@ def test_generate_skills_result_dispatches_by_mode():
         return {"success": True, "target": "card"}
 
     r1 = generate_skills_result({"role_name": "a", "mode": "skills"}, skills_handler, card_handler)
-    r2 = generate_skills_result({"role_name": "a", "mode": "chara_card"}, skills_handler, card_handler)
 
     assert r1["target"] == "skills"
+    assert calls == {"skills": 1, "card": 0}
+
+
+def test_generate_skills_result_dispatches_to_character_card_handler():
+    calls = {"skills": 0, "card": 0}
+
+    def skills_handler(data):
+        calls["skills"] += 1
+        return {"success": True, "target": "skills"}
+
+    def card_handler(data):
+        calls["card"] += 1
+        return {"success": True, "target": "card"}
+
+    r2 = generate_skills_result({"role_name": "a", "mode": "chara_card"}, skills_handler, card_handler)
+
     assert r2["target"] == "card"
-    assert calls == {"skills": 1, "card": 1}
+    assert calls == {"skills": 0, "card": 1}

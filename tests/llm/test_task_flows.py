@@ -45,7 +45,7 @@ def test_apply_checkpoint_fields_updates_non_lorebook_only():
     assert fields["character_book_entries"] == [{"id": 1}]
 
 
-def test_build_character_card_messages_resuming_and_non_resuming(monkeypatch):
+def test_build_character_card_messages_resuming():
     messages, iteration = task_flows.build_character_card_messages(
         is_resuming=True,
         ckpt_messages=[{"role": "assistant", "content": "x"}],
@@ -56,6 +56,8 @@ def test_build_character_card_messages_resuming_and_non_resuming(monkeypatch):
     assert messages == [{"role": "assistant", "content": "x"}]
     assert iteration == 4
 
+
+def test_build_character_card_messages_non_resuming(monkeypatch):
     monkeypatch.setattr(task_flows, "build_character_card_user_prompt", lambda role: f"user:{role}")
     messages, iteration = task_flows.build_character_card_messages(
         is_resuming=False,
@@ -69,10 +71,12 @@ def test_build_character_card_messages_resuming_and_non_resuming(monkeypatch):
     assert iteration == 0
 
 
-def test_build_template_path_and_field_mappings_and_success_result():
+def test_build_character_card_template_path():
     path = task_flows.build_character_card_template_path()
     assert path.endswith("utils\\chara_card_template.json") or path.endswith("utils/chara_card_template.json")
 
+
+def test_build_character_card_field_mappings():
     fields = {
         "name": "Alice",
         "description": "d",
@@ -94,6 +98,25 @@ def test_build_template_path_and_field_mappings_and_success_result():
     assert mappings["{{name}}"] == "Alice"
     assert mappings["{{character_book_entries}}"] == [{"id": 1}]
 
+
+def test_build_character_card_success_result():
+    fields = {
+        "name": "Alice",
+        "description": "d",
+        "personality": "",
+        "first_mes": "f",
+        "mes_example": "",
+        "scenario": "s",
+        "create_date": "2026-01-01T00:00:00",
+        "creatorcomment": "c",
+        "system_prompt": "sp",
+        "post_history_instructions": "",
+        "tags": ["character"],
+        "creator": "me",
+        "world_name": "w",
+        "depth_prompt": "",
+        "character_book_entries": [{"id": 1}],
+    }
     result = task_flows.build_character_card_success_result("out.json", fields, "ok")
     assert result["success"] is True
     assert result["output_path"] == "out.json"
