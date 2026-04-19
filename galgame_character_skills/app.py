@@ -4,6 +4,7 @@ from flask_cors import CORS
 from .api.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
 from .api.summary_api_service import scan_summary_roles_result, get_summary_files_result
 from .api.context_api_service import get_context_limit_result
+from .api.config_api_service import get_config_result
 from .api.vndb_api_service import get_vndb_info_result
 from .api.task_api_service import (
     summarize_result,
@@ -57,6 +58,10 @@ def _register_file_routes(app, deps, adapter):
 
 
 def _register_summary_routes(app, adapter):
+    @app.route("/api/config", methods=["GET"])
+    def get_config():
+        return adapter.run(get_config_result, get_app_settings)
+
     @app.route("/api/summaries/roles", methods=["GET"])
     def scan_summary_roles():
         return adapter.run(scan_summary_roles_result, get_base_dir, discover_summary_roles)
