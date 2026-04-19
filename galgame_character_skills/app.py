@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request
 from flask_cors import CORS
 
-from .api.file_api_service import scan_files_result, calculate_tokens_result, slice_file_result
+from .api.file_api_service import scan_files_result, upload_files_result, calculate_tokens_result, slice_file_result
 from .api.summary_api_service import scan_summary_roles_result, get_summary_files_result
 from .api.context_api_service import get_context_limit_result
 from .api.config_api_service import get_config_result
@@ -47,6 +47,11 @@ def _register_file_routes(app, deps, adapter):
     @app.route("/api/files", methods=["GET"])
     def scan_files():
         return adapter.run(scan_files_result, deps.file_processor)
+
+    @app.route("/api/files/upload", methods=["POST"])
+    def upload_files():
+        files = request.files.getlist("files")
+        return adapter.response(upload_files_result(deps.file_processor, files))
 
     @app.route("/api/files/tokens", methods=["POST"])
     def calculate_tokens():

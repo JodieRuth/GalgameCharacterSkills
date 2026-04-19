@@ -1,5 +1,6 @@
 import os
 import tiktoken
+from werkzeug.utils import secure_filename
 
 from .path_utils import get_base_dir
 
@@ -15,15 +16,33 @@ class FileProcessor:
     
     def _get_resource_dir(self):
         return os.path.join(self._get_base_dir(), 'resource')
+
+    @staticmethod
+    def _is_supported_text_file(filename):
+        lower = filename.lower()
+        return lower.endswith(".txt") or lower.endswith(".md")
     
     def scan_resource_files(self):
         files = []
         if os.path.exists(self.resource_dir):
             for file in os.listdir(self.resource_dir):
                 file_path = os.path.join(self.resource_dir, file)
-                if os.path.isfile(file_path) and (file.endswith(".txt") or file.endswith(".md")):
+                if os.path.isfile(file_path) and self._is_supported_text_file(file):
                     files.append(file_path)
         return files
+
+    def save_uploaded_files(self, uploaded_files):
+        saved_files = []
+        for uploaded in uploaded_files:
+            raw_name = getattr(uploaded, "filename", "") or ""
+            safe_name = secure_filename(raw_name)
+            if not safe_name or not self._is_supported_text_file(safe_name):
+                continue
+
+            save_path = os.path.join(self.resource_dir, safe_name)
+            uploaded.save(save_path)
+            saved_files.append(save_path)
+        return saved_files
     
     def calculate_tokens(self, file_path):
         try:

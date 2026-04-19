@@ -604,6 +604,10 @@
             
             <div class="form-group">
                 <label class="form-label">选择文件（按点击顺序合并）</label>
+                <div style="margin-bottom: 10px;">
+                    <input type="file" id="fileUploadInput" accept=".txt,.md" multiple style="display: none;" onchange="uploadSelectedFiles()">
+                    <button class="btn btn-secondary btn-small" onclick="document.getElementById('fileUploadInput').click()">上传文件</button>
+                </div>
                 <div id="fileList" class="file-list">
                     <div class="file-list-empty">扫描中...</div>
                 </div>
@@ -963,6 +967,35 @@
                 }
             } catch (e) {
                 log(`✗ 扫描错误: ${e.message}`, 'error');
+            }
+        }
+
+        async function uploadSelectedFiles() {
+            const input = document.getElementById('fileUploadInput');
+            const files = input.files;
+            if (!files || files.length === 0) return;
+
+            const formData = new FormData();
+            for (const file of files) {
+                formData.append('files', file);
+            }
+
+            try {
+                const response = await fetch('/api/files/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (result.success) {
+                    log(`✓ ${result.message}`, 'success');
+                    await scanFiles();
+                } else {
+                    log(`✗ ${result.message}`, 'error');
+                }
+            } catch (e) {
+                log(`✗ 上传错误: ${e.message}`, 'error');
+            } finally {
+                input.value = '';
             }
         }
         

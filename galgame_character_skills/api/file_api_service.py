@@ -6,6 +6,21 @@ def scan_files_result(file_processor):
     return ok_result(files=files)
 
 
+def upload_files_result(file_processor, files):
+    if not files:
+        return fail_result('请先选择要上传的文件')
+    try:
+        saved_files = file_processor.save_uploaded_files(files)
+        if not saved_files:
+            return fail_result('未检测到可上传的 .txt/.md 文件')
+        return ok_result(
+            message=f'上传完成，共保存 {len(saved_files)} 个文件',
+            files=saved_files,
+        )
+    except Exception as e:
+        return fail_result(f'上传失败: {str(e)}')
+
+
 def calculate_tokens_result(file_processor, data):
     file_path = data.get('file_path', '')
     slice_size_k = data.get('slice_size_k', 50)
