@@ -1,6 +1,15 @@
 import time
 
-import litellm
+_litellm_module = None
+
+
+def _get_litellm():
+    global _litellm_module
+    if _litellm_module is None:
+        import litellm
+
+        _litellm_module = litellm
+    return _litellm_module
 
 
 class CompletionTransport:
@@ -14,6 +23,7 @@ class CompletionTransport:
         on_final_failure=None,
     ):
         retries = max(1, max_retries or 1)
+        litellm = _get_litellm()
         for attempt in range(retries):
             try:
                 response = litellm.completion(**kwargs)

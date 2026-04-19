@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from galgame_character_skills.llm.transport import CompletionTransport
 import galgame_character_skills.llm.transport as transport_module
 
@@ -9,7 +11,11 @@ def test_complete_with_retry_succeeds_on_first_attempt(monkeypatch):
         called["kwargs"] = kwargs
         return {"ok": True}
 
-    monkeypatch.setattr(transport_module.litellm, "completion", fake_completion)
+    monkeypatch.setattr(
+        transport_module,
+        "_get_litellm",
+        lambda: SimpleNamespace(completion=fake_completion),
+    )
 
     transport = CompletionTransport()
     result = transport.complete_with_retry(kwargs={"model": "m1"}, max_retries=3)
@@ -27,7 +33,11 @@ def test_complete_with_retry_retries_and_calls_hooks(monkeypatch):
             raise RuntimeError("boom")
         return {"ok": True}
 
-    monkeypatch.setattr(transport_module.litellm, "completion", fake_completion)
+    monkeypatch.setattr(
+        transport_module,
+        "_get_litellm",
+        lambda: SimpleNamespace(completion=fake_completion),
+    )
     monkeypatch.setattr(transport_module.time, "sleep", lambda s: state["events"].append(("sleep", s)))
 
     transport = CompletionTransport()
@@ -58,7 +68,11 @@ def test_complete_with_retry_returns_none_after_final_failure(monkeypatch):
     def fake_completion(**kwargs):
         raise RuntimeError("always-fail")
 
-    monkeypatch.setattr(transport_module.litellm, "completion", fake_completion)
+    monkeypatch.setattr(
+        transport_module,
+        "_get_litellm",
+        lambda: SimpleNamespace(completion=fake_completion),
+    )
     monkeypatch.setattr(transport_module.time, "sleep", lambda s: None)
 
     transport = CompletionTransport()
@@ -79,7 +93,11 @@ def test_complete_with_retry_uses_minimum_one_retry(monkeypatch):
         state["count"] += 1
         return {"ok": True}
 
-    monkeypatch.setattr(transport_module.litellm, "completion", fake_completion)
+    monkeypatch.setattr(
+        transport_module,
+        "_get_litellm",
+        lambda: SimpleNamespace(completion=fake_completion),
+    )
 
     transport = CompletionTransport()
     result = transport.complete_with_retry(kwargs={"model": "m4"}, max_retries=0)

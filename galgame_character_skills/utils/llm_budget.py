@@ -1,11 +1,25 @@
-import litellm
+DEFAULT_CONTEXT_LIMIT = 115000
+_litellm_module = None
+
+
+def _get_litellm():
+    global _litellm_module
+    if _litellm_module is None:
+        import litellm
+
+        _litellm_module = litellm
+    return _litellm_module
 
 
 def get_model_context_limit(model_name):
     if not model_name:
-        return 115000
+        return DEFAULT_CONTEXT_LIMIT
 
     name_lower = model_name.lower().strip()
+    try:
+        litellm = _get_litellm()
+    except Exception:
+        return DEFAULT_CONTEXT_LIMIT
 
     for attempt_name in [model_name, name_lower]:
         try:
@@ -16,7 +30,7 @@ def get_model_context_limit(model_name):
         except Exception:
             continue
 
-    return 115000
+    return DEFAULT_CONTEXT_LIMIT
 
 
 def calculate_compression_threshold(context_limit):
