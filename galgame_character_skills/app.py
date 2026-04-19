@@ -48,11 +48,11 @@ def _register_file_routes(app, deps, adapter):
 
     @app.route("/api/files/tokens", methods=["POST"])
     def calculate_tokens():
-        return adapter.run_with_body(calculate_tokens_result, deps.file_processor)
+        return adapter.run_with_body(lambda data: calculate_tokens_result(deps.file_processor, data))
 
     @app.route("/api/slice", methods=["POST"])
     def slice_file():
-        return adapter.run_with_body(slice_file_result, deps.file_processor, extract_file_paths)
+        return adapter.run_with_body(lambda data: slice_file_result(deps.file_processor, data, extract_file_paths))
 
 
 def _register_summary_routes(app, adapter):
