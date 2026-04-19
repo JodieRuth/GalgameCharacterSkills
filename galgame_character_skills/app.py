@@ -25,6 +25,7 @@ from .utils.llm_budget import get_model_context_limit
 from .utils.app_runtime import open_browser
 from .web import get_template_dir
 from .application import build_app_dependencies, build_task_runtime, get_base_dir
+from .config import get_app_settings
 
 
 def _build_task_handlers(runtime):
@@ -127,6 +128,8 @@ def _register_vndb_route(app, deps, runtime, adapter):
 
 
 def create_app(app_dependencies=None, task_runtime=None):
+    # Warm settings cache so .env/env defaults are loaded during startup.
+    get_app_settings()
     app = Flask(__name__, template_folder=get_template_dir())
     CORS(app)
 
