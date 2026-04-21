@@ -3,6 +3,7 @@ import os
 
 from ..checkpoint import load_resumable_checkpoint
 from .checkpoint_prepare import prepare_request_with_checkpoint
+from .compression_policy import resolve_compression_policy
 from ..files import find_role_summary_markdown_files
 from ..utils.request_config import build_llm_config
 from ..skills import (
@@ -12,7 +13,6 @@ from ..skills import (
     build_prioritized_skill_generation_context,
 )
 from ..utils.compression_service import compress_summary_files_with_llm
-from ..utils.llm_budget import get_model_context_limit, calculate_compression_threshold
 from ..domain import GenerateSkillsRequest, ok_result, fail_result
 from ..workspace import get_workspace_skills_dir, get_workspace_summaries_dir
 
@@ -70,14 +70,19 @@ def _build_skill_context(summary_files, request_data, config, checkpoint_id, run
     raw_full_text = build_full_skill_generation_context(summary_files)
     raw_total_chars = len(raw_full_text)
     raw_estimated_tokens = runtime.estimate_tokens(raw_full_text)
-    context_limit = get_model_context_limit(request_data.model_name)
-    context_limit_tokens = calculate_compression_threshold(context_limit)
+    policy = resolve_compression_policy(
+        model_name=request_data.model_name,
+        raw_estimated_tokens=raw_estimated_tokens,
+        force_no_compression=request_data.force_no_compression,
+    )
+    context_limit = policy["context_limit"]
+    context_limit_tokens = policy["context_limit_tokens"]
     target_budget_tokens = context_limit_tokens
 
     print(f"Model: {request_data.model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
     print(f"Compression mode: {request_data.compression_mode}, Force no compression: {request_data.force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
 
-    if not request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
+    if policy["should_compress"]:
         if request_data.compression_mode == 'llm':
             print("Using LLM compression")
             llm_interaction = runtime.llm_gateway.create_client(config)
@@ -100,7 +105,7 @@ def _build_skill_context(summary_files, request_data, config, checkpoint_id, run
             context_mode = "compressed"
     else:
         summaries_text = raw_full_text
-        if request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
+        if policy["force_exceeds_limit"]:
             context_mode = "full_forced"
             print("Force no compression enabled, using full context despite exceeding limit")
         else:

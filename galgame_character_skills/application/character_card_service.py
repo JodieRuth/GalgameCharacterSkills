@@ -3,9 +3,9 @@ import os
 
 from ..checkpoint import load_resumable_checkpoint
 from .checkpoint_prepare import prepare_request_with_checkpoint
+from .compression_policy import resolve_compression_policy
 from ..files import find_role_analysis_summary_file
 from ..utils.request_config import build_llm_config
-from ..utils.llm_budget import get_model_context_limit, calculate_compression_threshold
 from ..utils.compression_service import compress_analyses_with_llm
 from ..domain import GenerateCharacterCardRequest, ok_result, fail_result
 from ..workspace import get_workspace_cards_dir, get_workspace_summaries_dir
@@ -84,14 +84,19 @@ def _load_character_analyses(runtime, role_name):
 def _compress_character_analyses(all_character_analyses, request_data, config, checkpoint_id, runtime):
     analyses_text = json.dumps(all_character_analyses, ensure_ascii=False)
     raw_estimated_tokens = runtime.estimate_tokens(analyses_text)
-    context_limit = get_model_context_limit(request_data.model_name)
-    context_limit_tokens = calculate_compression_threshold(context_limit)
+    policy = resolve_compression_policy(
+        model_name=request_data.model_name,
+        raw_estimated_tokens=raw_estimated_tokens,
+        force_no_compression=request_data.force_no_compression,
+    )
+    context_limit = policy["context_limit"]
+    context_limit_tokens = policy["context_limit_tokens"]
     target_budget_tokens = context_limit_tokens
 
     print(f"Model: {request_data.model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
     print(f"Compression mode: {request_data.compression_mode}, Force no compression: {request_data.force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
 
-    if not request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
+    if policy["should_compress"]:
         if request_data.compression_mode == 'llm':
             print("Using LLM compression for analyses")
             llm_interaction = runtime.llm_gateway.create_client(config)
@@ -112,7 +117,7 @@ def _compress_character_analyses(all_character_analyses, request_data, config, c
         compressed_tokens = runtime.estimate_tokens(compressed_text)
         print(f"Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
     else:
-        if request_data.force_no_compression and raw_estimated_tokens > context_limit_tokens:
+        if policy["force_exceeds_limit"]:
             print("Force no compression enabled, using full context despite exceeding limit")
         else:
             print(f"No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})")
