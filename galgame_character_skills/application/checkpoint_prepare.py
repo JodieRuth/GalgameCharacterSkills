@@ -17,11 +17,12 @@ def prepare_request_with_checkpoint(
         ckpt = ckpt_result["checkpoint"]
         request_data.apply_checkpoint(ckpt["input_params"])
         checkpoint_id = request_data.resume_checkpoint_id
-        state = load_resume_state(checkpoint_gateway, checkpoint_id)
+        state = load_resume_state(checkpoint_gateway, checkpoint_id, ckpt)
         return {
             "checkpoint_id": checkpoint_id,
             "state": state,
             "resumed": True,
+            "checkpoint": ckpt,
         }, None
 
     checkpoint_id = checkpoint_gateway.create_checkpoint(
@@ -32,6 +33,7 @@ def prepare_request_with_checkpoint(
         "checkpoint_id": checkpoint_id,
         "state": build_initial_state(),
         "resumed": False,
+        "checkpoint": None,
     }, None
 
 

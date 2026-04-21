@@ -17,7 +17,7 @@ from ..domain import GenerateSkillsRequest, ok_result, fail_result
 from ..workspace import get_workspace_skills_dir, get_workspace_summaries_dir
 
 
-def _load_resume_skills_state(checkpoint_gateway, checkpoint_id):
+def _load_resume_skills_state(checkpoint_gateway, checkpoint_id, _checkpoint):
     llm_state = checkpoint_gateway.load_llm_state(checkpoint_id)
     return {
         "messages": llm_state.get("messages", []),

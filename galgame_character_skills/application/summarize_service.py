@@ -4,6 +4,7 @@ import time
 from concurrent.futures import as_completed
 
 from ..checkpoint import load_resumable_checkpoint
+from .checkpoint_prepare import prepare_request_with_checkpoint
 from ..utils.request_config import build_llm_config
 from ..utils.input_normalization import extract_file_paths
 from ..domain import SummarizeRequest, ok_result, fail_result
@@ -199,28 +200,28 @@ def _prepare_summarize_request(data, runtime):
         return None, fail_result('请输入角色名称')
 
     config = build_llm_config(data)
-    checkpoint_id = None
 
-    if request_data.resume_checkpoint_id:
-        ckpt_result = load_resumable_checkpoint(runtime.checkpoint_gateway, request_data.resume_checkpoint_id)
-        if not ckpt_result.get('success'):
-            return None, ckpt_result
-        ckpt = ckpt_result['checkpoint']
+    if not request_data.resume_checkpoint_id and not request_data.file_paths:
+        return None, fail_result('请先选择文件')
 
-        request_data.apply_checkpoint(ckpt['input_params'])
-        checkpoint_id = request_data.resume_checkpoint_id
+    checkpoint_data, error = prepare_request_with_checkpoint(
+        request_data=request_data,
+        checkpoint_gateway=runtime.checkpoint_gateway,
+        task_type="summarize",
+        load_resume_state=lambda _gateway, _checkpoint_id, checkpoint: {"checkpoint": checkpoint},
+        build_initial_state=lambda: {},
+        load_resumable_checkpoint_fn=load_resumable_checkpoint,
+    )
+    if error:
+        return None, error
+    checkpoint_id = checkpoint_data["checkpoint_id"]
+
+    if checkpoint_data["resumed"]:
+        ckpt = checkpoint_data["state"]["checkpoint"]
         _sanitize_resume_progress(ckpt, runtime.checkpoint_gateway, checkpoint_id)
 
         completed_indices = set(ckpt['progress'].get('completed_items', []))
         print(f"Resuming summarize: {len(completed_indices)}/{ckpt['progress'].get('total_steps', '?')} slices already done")
-    else:
-        if not request_data.file_paths:
-            return None, fail_result('请先选择文件')
-
-        checkpoint_id = runtime.checkpoint_gateway.create_checkpoint(
-            task_type='summarize',
-            input_params=request_data.to_checkpoint_input()
-        )
 
     if not request_data.file_paths:
         return None, fail_result('请先选择文件')

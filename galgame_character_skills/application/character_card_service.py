@@ -11,7 +11,7 @@ from ..domain import GenerateCharacterCardRequest, ok_result, fail_result
 from ..workspace import get_workspace_cards_dir, get_workspace_summaries_dir
 
 
-def _load_resume_character_card_state(checkpoint_gateway, checkpoint_id):
+def _load_resume_character_card_state(checkpoint_gateway, checkpoint_id, _checkpoint):
     llm_state = checkpoint_gateway.load_llm_state(checkpoint_id)
     return {
         "fields_data": llm_state.get("fields_data", {}),
