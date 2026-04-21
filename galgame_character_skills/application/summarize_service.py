@@ -208,6 +208,7 @@ def _prepare_summarize_request(data, runtime):
 
         request_data.apply_checkpoint(ckpt['input_params'])
         checkpoint_id = request_data.resume_checkpoint_id
+        _sanitize_resume_progress(ckpt, runtime.checkpoint_gateway, checkpoint_id)
 
         completed_indices = set(ckpt['progress'].get('completed_items', []))
         print(f"Resuming summarize: {len(completed_indices)}/{ckpt['progress'].get('total_steps', '?')} slices already done")
@@ -228,6 +229,42 @@ def _prepare_summarize_request(data, runtime):
         'config': config,
         'checkpoint_id': checkpoint_id,
     }, None
+
+
+def _sanitize_resume_progress(ckpt, checkpoint_gateway, checkpoint_id):
+    if ckpt.get('task_type') != 'summarize':
+        return
+
+    progress = ckpt.get('progress', {})
+    completed = list(progress.get('completed_items', []))
+    if not completed:
+        return
+
+    valid_completed = []
+    invalid_completed = []
+    for index in completed:
+        content = checkpoint_gateway.get_slice_result(checkpoint_id, index)
+        if isinstance(content, str) and content.strip():
+            valid_completed.append(index)
+        else:
+            invalid_completed.append(index)
+
+    if not invalid_completed:
+        return
+
+    pending = list(progress.get('pending_items', []))
+    pending_set = set(pending)
+    for index in invalid_completed:
+        pending_set.add(index)
+    pending_clean = [index for index in sorted(pending_set) if index not in set(valid_completed)]
+
+    progress['completed_items'] = valid_completed
+    progress['pending_items'] = pending_clean
+    checkpoint_gateway.update_progress(
+        checkpoint_id,
+        completed_items=valid_completed,
+        pending_items=pending_clean,
+    )
 
 
 def _build_summary_dir(file_paths, role_name):
