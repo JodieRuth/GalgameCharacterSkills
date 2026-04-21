@@ -1,3 +1,5 @@
+"""任务接口模块，统一暴露 summarize、skills 与 character card 任务入口。"""
+
 from ..application.summarize_service import run_summarize_task
 from ..application.skills_service import run_generate_skills_task
 from ..application.character_card_service import run_generate_character_card_task

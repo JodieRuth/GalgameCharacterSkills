@@ -1,3 +1,5 @@
+"""文件子系统导出模块，暴露文件处理与 summary 发现相关接口。"""
+
 from .processor import FileProcessor
 from .summary_discovery import (
     discover_summary_roles,

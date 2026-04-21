@@ -1,3 +1,5 @@
+"""Flask 应用入口模块，负责注册 HTTP 路由并组装运行时依赖。"""
+
 from flask import Flask, render_template, request
 from flask_cors import CORS
 

@@ -1,3 +1,5 @@
+"""领域层导出模块，集中暴露请求模型与统一服务结果结构。"""
+
 from .task_requests import (
     SummarizeRequest,
     GenerateSkillsRequest,

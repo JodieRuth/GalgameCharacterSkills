@@ -1,3 +1,5 @@
+"""通用 tool loop 执行模块，封装可持久化的循环状态推进逻辑。"""
+
 from dataclasses import dataclass
 from typing import Any, Callable
 

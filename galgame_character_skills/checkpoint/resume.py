@@ -1,3 +1,5 @@
+"""Checkpoint 恢复模块，负责校验状态并返回可恢复任务的上下文。"""
+
 from ..domain import ok_result, fail_result
 
 

@@ -1,3 +1,5 @@
+"""请求配置解析模块，将原始请求数据转换为标准化 LLM 配置。"""
+
 from ..config import get_app_settings
 
 

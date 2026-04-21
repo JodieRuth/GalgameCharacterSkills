@@ -1,3 +1,5 @@
+"""LLM 交互模块，封装消息构造、completion 调用与工具循环入口。"""
+
 import json
 from ..gateways.tool_gateway import DefaultToolGateway
 from .transport import CompletionTransport

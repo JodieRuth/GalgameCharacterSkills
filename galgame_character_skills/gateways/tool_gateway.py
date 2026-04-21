@@ -1,3 +1,5 @@
+"""工具网关模块，提供 tool call 解析与执行器实例的抽象入口。"""
+
 from ..utils.tool_handler import ToolHandler
 
 

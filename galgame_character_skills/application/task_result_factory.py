@@ -1,3 +1,5 @@
+"""任务结果工厂模块，统一构造成功/失败结果与 dataclass 映射器。"""
+
 from dataclasses import MISSING, fields
 
 from ..domain import ok_result, fail_result

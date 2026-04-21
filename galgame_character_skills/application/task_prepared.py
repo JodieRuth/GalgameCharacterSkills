@@ -1,3 +1,5 @@
+"""Prepared 任务模型模块，定义各类用例在预处理后的统一承载结构。"""
+
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 

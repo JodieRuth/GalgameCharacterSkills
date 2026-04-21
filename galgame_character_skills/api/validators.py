@@ -1,3 +1,5 @@
+"""API 参数校验装饰器模块，封装常用的请求字段前置校验逻辑。"""
+
 from functools import wraps
 
 from ..domain import fail_result

@@ -1,3 +1,5 @@
+"""LLM 传输模块，封装对 LiteLLM completion 接口的重试与调用细节。"""
+
 import time
 
 _litellm_module = None

@@ -1,3 +1,5 @@
+"""存储网关模块，封装文件读写、目录操作与 JSON 持久化。"""
+
 import json
 import os
 import shutil

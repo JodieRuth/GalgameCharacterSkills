@@ -1,3 +1,5 @@
+"""技能生成辅助模块导出入口，暴露上下文构建与后处理相关函数。"""
+
 from .context_builder import (
     extract_summary_highlights,
     extract_key_sections,

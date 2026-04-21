@@ -1,3 +1,5 @@
+"""LLM 工厂模块，负责按配置构建可用的 LLMInteraction 实例。"""
+
 from ..llm import LLMInteraction
 
 

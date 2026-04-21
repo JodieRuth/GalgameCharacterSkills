@@ -1,3 +1,5 @@
+"""LLM 请求运行时模块，记录单次任务中的请求计数与统计信息。"""
+
 class LLMRequestRuntime:
     _request_count = 0
     _total_requests = 0

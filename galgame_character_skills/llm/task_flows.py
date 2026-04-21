@@ -1,3 +1,5 @@
+"""角色卡任务流辅助模块，提供字段初始化、消息构建与结果封装。"""
+
 import os
 from datetime import datetime
 

@@ -1,3 +1,5 @@
+"""统一服务结果模块，定义 success/message/payload 形式的返回结构。"""
+
 from dataclasses import dataclass, field
 from typing import Any
 

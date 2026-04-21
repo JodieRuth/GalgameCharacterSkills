@@ -1,3 +1,5 @@
+"""任务请求模型模块，定义 summarize、skills 与角色卡生成的输入契约。"""
+
 from dataclasses import dataclass, field
 from typing import Any, Callable, ClassVar
 

@@ -1,3 +1,5 @@
+"""应用依赖装配模块，负责构建全局依赖与任务运行时依赖。"""
+
 from dataclasses import dataclass
 from typing import Callable, Any
 

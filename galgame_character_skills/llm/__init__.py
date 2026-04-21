@@ -1,3 +1,5 @@
+"""LLM 子系统导出模块，以惰性导入方式暴露核心交互类。"""
+
 from importlib import import_module
 from typing import TYPE_CHECKING
 

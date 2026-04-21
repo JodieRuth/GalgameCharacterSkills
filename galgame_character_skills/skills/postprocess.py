@@ -1,3 +1,5 @@
+"""技能产物后处理模块，负责追加 VNDB 信息并同步生成代码版技能目录。"""
+
 import os
 
 _VNDB_SECTION_PREFIX_LINES = ["", "", "---", ""]

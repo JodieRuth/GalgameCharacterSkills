@@ -1,3 +1,5 @@
+"""VNDB 查询接口模块，负责请求校验与结果组装。"""
+
 from .validators import require_non_empty_field
 
 

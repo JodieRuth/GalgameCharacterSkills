@@ -1,3 +1,5 @@
+"""Checkpoint 接口服务模块，提供列表、详情、删除与恢复任务的编排入口。"""
+
 from ..checkpoint import load_resumable_checkpoint
 from ..domain import ok_result, fail_result
 

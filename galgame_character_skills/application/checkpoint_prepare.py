@@ -1,3 +1,5 @@
+"""任务恢复预处理模块，统一封装带 checkpoint 的请求准备过程。"""
+
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 

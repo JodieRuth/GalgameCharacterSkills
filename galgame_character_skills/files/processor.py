@@ -1,3 +1,5 @@
+"""文件处理模块，负责上传、扫描、token 计算与文本切片操作。"""
+
 import os
 import tiktoken
 from werkzeug.utils import secure_filename

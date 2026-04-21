@@ -1,3 +1,5 @@
+"""API 编排层导出模块，集中暴露给路由层调用的接口函数。"""
+
 from .file_api_service import scan_files_result, upload_files_result, calculate_tokens_result, slice_file_result
 from .summary_api_service import scan_summary_roles_result, get_summary_files_result
 from .checkpoint_service import (

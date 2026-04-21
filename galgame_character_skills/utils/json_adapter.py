@@ -1,3 +1,5 @@
+"""JSON 响应适配模块，将统一结果对象转换为 Flask JSON 响应。"""
+
 from flask import jsonify, request
 
 

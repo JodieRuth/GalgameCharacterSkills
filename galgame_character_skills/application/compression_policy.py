@@ -1,3 +1,5 @@
+"""压缩策略模块，根据模型上下文与估算 token 决定是否压缩输入。"""
+
 from ..utils.llm_budget import get_model_context_limit, calculate_compression_threshold
 
 

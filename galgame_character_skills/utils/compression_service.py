@@ -1,3 +1,5 @@
+"""LLM 压缩服务模块，负责大体量 summary 与分析文本的分组压缩。"""
+
 import json
 import math
 import os

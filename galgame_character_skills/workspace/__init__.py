@@ -1,3 +1,5 @@
+"""工作区路径导出模块，集中暴露上传、summary、技能与卡片目录接口。"""
+
 from .paths import (
     get_workspace_cards_dir,
     get_workspace_checkpoints_dir,

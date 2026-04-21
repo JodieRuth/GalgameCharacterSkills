@@ -1,3 +1,5 @@
+"""VNDB 数据工具模块，负责特征词加载与角色数据清洗规范化。"""
+
 import base64
 import json
 import os

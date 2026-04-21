@@ -1,3 +1,5 @@
+"""技能包生成用例模块，负责构建上下文、执行 tool loop 与落盘后处理。"""
+
 import json
 import os
 from dataclasses import dataclass

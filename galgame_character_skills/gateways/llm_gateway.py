@@ -1,3 +1,5 @@
+"""LLM 网关模块，负责创建和提供默认的 LLM 交互客户端。"""
+
 from ..utils.llm_factory import build_llm_client
 from ..llm import LLMInteraction
 

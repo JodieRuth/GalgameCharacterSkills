@@ -1,3 +1,5 @@
+"""上下文窗口查询接口模块，提供模型上下文上限查询结果。"""
+
 from ..domain import ok_result
 
 

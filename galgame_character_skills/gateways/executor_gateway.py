@@ -1,3 +1,5 @@
+"""执行器网关模块，提供线程池执行器的抽象与默认实现。"""
+
 from concurrent.futures import ThreadPoolExecutor
 
 

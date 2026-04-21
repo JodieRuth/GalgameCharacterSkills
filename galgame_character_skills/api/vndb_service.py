@@ -1,3 +1,5 @@
+"""VNDB 服务适配模块，封装角色信息抓取后的统一返回格式。"""
+
 from ..domain import ok_result, fail_result
 
 

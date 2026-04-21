@@ -1,3 +1,5 @@
+"""配置查询接口模块，对外返回已脱敏的运行配置视图。"""
+
 from ..domain import ok_result
 
 

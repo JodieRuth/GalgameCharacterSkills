@@ -1,3 +1,5 @@
+"""任务准备上下文模块，提供请求清洗、恢复回调与 prepared builder 组合器。"""
+
 from .checkpoint_prepare import prepare_request_with_checkpoint
 
 

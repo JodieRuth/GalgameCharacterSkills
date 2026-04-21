@@ -1,3 +1,5 @@
+"""Prompt 构建工具模块，负责角色卡与分析整合提示词片段生成。"""
+
 def build_character_card_language_instruction(output_language, lang_names):
     if not output_language:
         return ""

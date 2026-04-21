@@ -1,3 +1,5 @@
+"""Tool 调用处理模块，负责解析模型工具调用并执行文件写入。"""
+
 import os
 import json
 import re

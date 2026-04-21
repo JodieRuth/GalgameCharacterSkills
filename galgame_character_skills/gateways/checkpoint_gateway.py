@@ -1,3 +1,5 @@
+"""Checkpoint 网关模块，抽象并默认实现 checkpoint 相关底层操作。"""
+
 class CheckpointGateway:
     def create_checkpoint(self, task_type, input_params, metadata=None):
         raise NotImplementedError

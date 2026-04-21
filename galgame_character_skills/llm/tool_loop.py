@@ -1,3 +1,5 @@
+"""角色卡 tool loop 模块，负责字段写入调用、状态保存与循环终止判断。"""
+
 import json
 
 from ..checkpoint import CheckpointManager

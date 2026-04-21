@@ -1,3 +1,5 @@
+"""任务恢复状态模块，定义不同任务类型的 resume state 与加载器工厂。"""
+
 from dataclasses import dataclass, field
 from typing import Any, Callable, TypeVar
 

@@ -1,3 +1,5 @@
+"""文本归纳用例模块，负责切片调度、并发执行、checkpoint 与结果汇总。"""
+
 import json
 import os
 import time

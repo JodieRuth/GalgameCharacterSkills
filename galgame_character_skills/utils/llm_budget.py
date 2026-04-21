@@ -1,3 +1,5 @@
+"""LLM 预算模块，提供上下文窗口查询与压缩阈值计算。"""
+
 DEFAULT_CONTEXT_LIMIT = 115000
 _litellm_module = None
 

@@ -1,3 +1,5 @@
+"""应用配置模块，负责读取环境变量、dotenv 与缓存化配置对象。"""
+
 import os
 import sys
 from dataclasses import dataclass

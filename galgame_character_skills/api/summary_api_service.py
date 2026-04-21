@@ -1,3 +1,5 @@
+"""总结结果查询接口模块，负责角色列表与 summary 文件发现。"""
+
 from ..domain import ok_result
 from .validators import require_non_empty_field
 

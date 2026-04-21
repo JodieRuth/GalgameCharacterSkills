@@ -1,3 +1,5 @@
+"""压缩执行模块，根据运行时依赖驱动 summary 或分析文本压缩流程。"""
+
 def run_compression_pipeline(
     *,
     runtime,

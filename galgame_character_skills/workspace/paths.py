@@ -1,3 +1,5 @@
+"""工作区路径模块，统一管理项目运行期各类目录的定位规则。"""
+
 import os
 
 from ..config.settings import get_app_settings, get_base_dir

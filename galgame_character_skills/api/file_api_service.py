@@ -1,3 +1,5 @@
+"""文件接口模块，负责文件扫描、上传、切片与 token 估算的薄编排。"""
+
 from ..domain import ok_result, fail_result
 from .validators import require_non_empty_field, require_condition
 

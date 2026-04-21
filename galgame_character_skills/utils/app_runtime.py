@@ -1,3 +1,5 @@
+"""应用运行时工具模块，提供日志配置与浏览器自动打开等辅助能力。"""
+
 import logging
 import time
 import webbrowser

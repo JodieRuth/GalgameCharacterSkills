@@ -1,3 +1,5 @@
+"""Prompt 模板模块，集中构建 summarize、skills 与角色卡生成提示词。"""
+
 def _build_write_file_tool(content_description):
     return [
         {

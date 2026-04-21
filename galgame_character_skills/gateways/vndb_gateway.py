@@ -1,3 +1,5 @@
+"""VNDB 网关模块，封装对 VNDB HTTP 接口的访问实现。"""
+
 import requests
 
 

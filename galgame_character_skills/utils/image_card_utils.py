@@ -1,3 +1,5 @@
+"""角色卡图片工具模块，负责下载角色图并将 JSON 嵌入 PNG。"""
+
 import base64
 import json
 import zlib

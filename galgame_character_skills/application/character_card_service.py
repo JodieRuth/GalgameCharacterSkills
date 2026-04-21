@@ -1,3 +1,5 @@
+"""角色卡生成用例模块，负责分析整合、字段生成、导出与恢复流程。"""
+
 import json
 import os
 from dataclasses import dataclass, field

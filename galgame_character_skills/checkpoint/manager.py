@@ -1,3 +1,5 @@
+"""Checkpoint 持久化管理模块，负责状态存储、进度更新与任务目录维护。"""
+
 import json
 import os
 import uuid
