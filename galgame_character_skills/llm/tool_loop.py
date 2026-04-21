@@ -7,10 +7,14 @@ def _checkpoint_fields_snapshot(fields_data):
     return {k: v for k, v in fields_data.items() if k != "character_book_entries"}
 
 
-def _save_checkpoint_state(checkpoint_id, messages, iteration_count, fields_data, last_response_marker=None):
+def _default_save_llm_state(checkpoint_id, **payload):
+    mgr = CheckpointManager()
+    mgr.save_llm_state(checkpoint_id, **payload)
+
+
+def _save_checkpoint_state(checkpoint_id, messages, iteration_count, fields_data, save_llm_state_fn, last_response_marker=None):
     if not checkpoint_id:
         return
-    mgr = CheckpointManager()
     payload = {
         "messages": messages,
         "iteration_count": iteration_count,
@@ -18,7 +22,7 @@ def _save_checkpoint_state(checkpoint_id, messages, iteration_count, fields_data
     }
     if last_response_marker is not ...:
         payload["last_response"] = last_response_marker
-    mgr.save_llm_state(checkpoint_id, **payload)
+    save_llm_state_fn(checkpoint_id, **payload)
 
 
 def _apply_write_field_calls(tool_calls, fields_data):
@@ -78,8 +82,10 @@ def run_character_card_tool_loop(
     checkpoint_id,
     initial_tool_call_count=0,
     max_tool_calls=50,
+    save_llm_state_fn=None,
 ):
     tool_call_count = initial_tool_call_count
+    save_fn = save_llm_state_fn or _default_save_llm_state
 
     while tool_call_count < max_tool_calls:
         _save_checkpoint_state(
@@ -87,6 +93,7 @@ def run_character_card_tool_loop(
             messages=messages,
             iteration_count=tool_call_count,
             fields_data=fields_data,
+            save_llm_state_fn=save_fn,
             last_response_marker=...,
         )
 
@@ -98,6 +105,7 @@ def run_character_card_tool_loop(
                 messages=messages,
                 iteration_count=tool_call_count,
                 fields_data=fields_data,
+                save_llm_state_fn=save_fn,
                 last_response_marker=None,
             )
             return {"success": False, "message": "LLM交互失败", "can_resume": True}
@@ -127,6 +135,7 @@ def run_character_card_tool_loop(
             messages=messages,
             iteration_count=tool_call_count,
             fields_data=fields_data,
+            save_llm_state_fn=save_fn,
             last_response_marker=response,
         )
 

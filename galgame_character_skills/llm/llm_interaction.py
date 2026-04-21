@@ -236,7 +236,7 @@ class LLMInteraction:
         )
         return messages, tools
 
-    def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language="", checkpoint_id=None, ckpt_messages=None, ckpt_fields_data=None, ckpt_iteration_count=None):
+    def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language="", checkpoint_id=None, ckpt_messages=None, ckpt_fields_data=None, ckpt_iteration_count=None, save_llm_state_fn=None):
         integrated_analysis = self._integrate_analyses(role_name, all_analyses, vndb_data)
         
         vndb_ref = _format_vndb_section(vndb_data, "VNDB REFERENCE DATA (HIGHEST PRIORITY - Use these values as authoritative source for character appearance and basic info)", bullet="")
@@ -282,6 +282,7 @@ class LLMInteraction:
             checkpoint_id=checkpoint_id,
             initial_tool_call_count=tool_call_count,
             max_tool_calls=50,
+            save_llm_state_fn=save_llm_state_fn,
         )
         if not loop_result.get("success"):
             return loop_result
