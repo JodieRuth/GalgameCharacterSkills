@@ -14,8 +14,12 @@ class _FakeResponse:
 
 
 class _FakeLLMClient:
+    def __init__(self, content="summary-content", tool_calls=None):
+        self.content = content
+        self.tool_calls = tool_calls
+
     def summarize_content(self, *args, **kwargs):
-        return _FakeResponse(content="summary-content")
+        return _FakeResponse(content=self.content, tool_calls=self.tool_calls)
 
     def summarize_content_for_chara_card(self, *args, **kwargs):
         return _FakeResponse(content='{"character_analysis": {}, "lorebook_entries": []}')
@@ -63,11 +67,17 @@ def test_process_single_slice_restores_from_checkpoint_markdown():
             return "cached"
 
     class FakeStorageGateway:
+        def __init__(self):
+            self.content = "x" * 300
+
         def exists(self, path):
             return True
 
         def read_text(self, path):
-            return "x" * 300
+            return self.content
+
+        def write_text(self, path, content):
+            self.content = content
 
     result = summarize_service._process_single_slice(
         args=(0, "slice", "A", "", "out.md", {}, "", "skills", None, "ckpt-1"),
@@ -98,15 +108,73 @@ def test_process_single_slice_normal_mode_success(monkeypatch):
     ckpt = FakeCheckpointGateway()
     llm_gateway = SimpleNamespace(create_client=lambda config: _FakeLLMClient())
 
+    class FakeStorageGateway:
+        def __init__(self):
+            self.saved = {}
+
+        def exists(self, path):
+            return path in self.saved
+
+        def read_text(self, path):
+            return self.saved[path]
+
+        def write_text(self, path, content):
+            self.saved[path] = content
+
+    storage = FakeStorageGateway()
+
     result = summarize_service._process_single_slice(
         args=(1, "slice", "A", "", "out.md", {}, "", "skills", None, "ckpt-2"),
         ckpt_manager=ckpt,
         llm_gateway=llm_gateway,
         tool_gateway=SimpleNamespace(handle_tool_call=lambda x: {"ok": True}),
-        storage_gateway=SimpleNamespace(read_text=lambda _: "saved-content"),
+        storage_gateway=storage,
     )
 
     assert result["success"] is True
     assert result["summary"] == "summary-content"
+    assert storage.saved["out.md"] == "summary-content"
     assert ckpt.saved == ("ckpt-2", 1, "summary-content", "completed")
     assert ckpt.marked == ("ckpt-2", 1)
+
+
+def test_process_single_slice_normal_mode_empty_content_fails(monkeypatch):
+    monkeypatch.setattr(summarize_service.time, "sleep", lambda *_: None)
+
+    class FakeCheckpointGateway:
+        def get_slice_result(self, checkpoint_id, slice_index):
+            return None
+
+        def save_slice_result(self, checkpoint_id, slice_index, content, status):
+            raise AssertionError("checkpoint should not be saved for failed slice")
+
+        def mark_slice_completed(self, checkpoint_id, slice_index):
+            raise AssertionError("slice should not be marked completed for failed slice")
+
+    class FakeStorageGateway:
+        def __init__(self):
+            self.saved = {}
+
+        def exists(self, path):
+            return path in self.saved
+
+        def write_text(self, path, content):
+            self.saved[path] = content
+
+        def read_text(self, path):
+            return self.saved[path]
+
+    storage = FakeStorageGateway()
+    llm_gateway = SimpleNamespace(create_client=lambda config: _FakeLLMClient(content="   "))
+
+    result = summarize_service._process_single_slice(
+        args=(2, "slice", "A", "", "out.md", {}, "", "skills", None, "ckpt-3"),
+        ckpt_manager=FakeCheckpointGateway(),
+        llm_gateway=llm_gateway,
+        tool_gateway=SimpleNamespace(handle_tool_call=lambda x: {"ok": True}),
+        storage_gateway=storage,
+    )
+
+    assert result["success"] is False
+    assert result["summary"] is None
+    assert storage.saved == {}
