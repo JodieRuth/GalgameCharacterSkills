@@ -28,6 +28,30 @@ class SliceTask:
     checkpoint_id: str | None
 
 
+@dataclass
+class SliceExecutionResult:
+    index: int
+    success: bool = False
+    summary: str | None = None
+    tool_results: list = None
+    output_path: str = ""
+    character_analysis: dict | None = None
+    lorebook_entries: list = None
+    restored: bool = False
+
+    def __post_init__(self):
+        if self.tool_results is None:
+            self.tool_results = []
+        if self.lorebook_entries is None:
+            self.lorebook_entries = []
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
+
 def _to_slice_task(args):
     if isinstance(args, SliceTask):
         return args
@@ -93,27 +117,27 @@ def _extract_write_file_content(choice):
 
 def _finalize_skills_slice_result(result, choice, output_file_path, storage_gateway):
     content_from_tool = _extract_write_file_content(choice)
-    content = content_from_tool or (result.get('summary') or "")
+    content = content_from_tool or (result.summary or "")
     if not content.strip():
-        result['success'] = False
-        result['summary'] = None
-        result['tool_results'].append("Empty summary content")
+        result.success = False
+        result.summary = None
+        result.tool_results.append("Empty summary content")
         return
 
     # If tool call did not write file, persist content from plain-text response.
     if not content_from_tool:
         storage_gateway.write_text(output_file_path, content)
-        result['summary'] = content
+        result.summary = content
 
     # Treat disk write as the source of truth for success in skills mode.
     if not storage_gateway.exists(output_file_path):
-        result['success'] = False
-        result['summary'] = None
-        result['tool_results'].append("Summary file was not saved")
+        result.success = False
+        result.summary = None
+        result.tool_results.append("Summary file was not saved")
 
 
 def _persist_slice_checkpoint_if_needed(checkpoint_id, slice_index, mode, output_file_path, choice, result, ckpt_manager, storage_gateway):
-    if not (result['success'] and checkpoint_id):
+    if not (result.success and checkpoint_id):
         return
 
     try:
@@ -142,23 +166,20 @@ def _process_single_slice(args, ckpt_manager, llm_gateway, tool_gateway, storage
         existing = ckpt_manager.get_slice_result(checkpoint_id, slice_index)
         if existing:
             print(f"Slice {slice_index} already completed, skipping")
-            result = {
-                'index': slice_index,
-                'success': True,
-                'summary': f"Slice {slice_index + 1} restored from checkpoint",
-                'tool_results': [],
-                'output_path': output_file_path,
-                'character_analysis': None,
-                'lorebook_entries': [],
-                'restored': True
-            }
+            result = SliceExecutionResult(
+                index=slice_index,
+                success=True,
+                summary=f"Slice {slice_index + 1} restored from checkpoint",
+                output_path=output_file_path,
+                restored=True,
+            )
             if mode == 'chara_card':
                 try:
                     if not storage_gateway.exists(output_file_path):
                         return result
                     parsed = storage_gateway.read_json(output_file_path)
-                    result['character_analysis'] = parsed.get('character_analysis', {})
-                    result['lorebook_entries'] = parsed.get('lorebook_entries', [])
+                    result.character_analysis = parsed.get('character_analysis', {})
+                    result.lorebook_entries = parsed.get('lorebook_entries', [])
                 except Exception:
                     pass
             else:
@@ -166,7 +187,7 @@ def _process_single_slice(args, ckpt_manager, llm_gateway, tool_gateway, storage
                     if not storage_gateway.exists(output_file_path):
                         return result
                     content = storage_gateway.read_text(output_file_path)
-                    result['summary'] = content[:200] + "..." if len(content) > 200 else content
+                    result.summary = content[:200] + "..." if len(content) > 200 else content
                 except Exception:
                     pass
             return result
@@ -192,16 +213,7 @@ def _process_single_slice(args, ckpt_manager, llm_gateway, tool_gateway, storage
             task.vndb_data,
         )
 
-    result = {
-        'index': slice_index,
-        'success': False,
-        'summary': None,
-        'tool_results': [],
-        'output_path': output_file_path,
-        'character_analysis': None,
-        'lorebook_entries': [],
-        'restored': False
-    }
+    result = SliceExecutionResult(index=slice_index, output_path=output_file_path)
     choice = None
 
     if response and hasattr(response, 'choices') and response.choices:
@@ -211,36 +223,36 @@ def _process_single_slice(args, ckpt_manager, llm_gateway, tool_gateway, storage
             if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
                 for tool_call in choice.message.tool_calls:
                     tool_result = tool_gateway.handle_tool_call(tool_call)
-                    result['tool_results'].append(tool_result)
-                result['success'] = True
-                result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
+                    result.tool_results.append(tool_result)
+                result.success = True
+                result.summary = f"Slice {slice_index + 1} saved to {output_file_path}"
 
                 try:
                     parsed = storage_gateway.read_json(output_file_path)
-                    result['character_analysis'] = parsed.get('character_analysis', {})
-                    result['lorebook_entries'] = parsed.get('lorebook_entries', [])
+                    result.character_analysis = parsed.get('character_analysis', {})
+                    result.lorebook_entries = parsed.get('lorebook_entries', [])
                 except Exception as e:
-                    result['tool_results'].append(f"Warning: Failed to read saved file: {e}")
+                    result.tool_results.append(f"Warning: Failed to read saved file: {e}")
 
             elif hasattr(choice, 'message') and choice.message.content:
                 content = choice.message.content
                 parsed = tool_gateway.parse_llm_json_response(content)
                 if parsed:
-                    result['character_analysis'] = parsed.get('character_analysis', {})
-                    result['lorebook_entries'] = parsed.get('lorebook_entries', [])
-                    result['success'] = True
-                    result['summary'] = f"Slice {slice_index + 1} analyzed successfully"
+                    result.character_analysis = parsed.get('character_analysis', {})
+                    result.lorebook_entries = parsed.get('lorebook_entries', [])
+                    result.success = True
+                    result.summary = f"Slice {slice_index + 1} analyzed successfully"
                     storage_gateway.write_json(output_file_path, parsed, ensure_ascii=False, indent=2)
         else:
             if hasattr(choice, 'message') and hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
                 for tool_call in choice.message.tool_calls:
                     tool_result = tool_gateway.handle_tool_call(tool_call)
-                    result['tool_results'].append(tool_result)
-                result['success'] = True
-                result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
+                    result.tool_results.append(tool_result)
+                result.success = True
+                result.summary = f"Slice {slice_index + 1} saved to {output_file_path}"
             else:
-                result['success'] = True
-                result['summary'] = choice.message.content
+                result.success = True
+                result.summary = choice.message.content
             _finalize_skills_slice_result(result, choice, output_file_path, storage_gateway)
 
     if choice is not None:
@@ -395,15 +407,15 @@ def _execute_slice_tasks(tasks, request_data, runtime):
         for future in as_completed(future_to_task):
             try:
                 result = future.result()
-                if result['success']:
-                    summaries.append(result['summary'])
-                    all_results.extend(result['tool_results'])
-                    if result.get('character_analysis'):
-                        all_character_analyses.append(result['character_analysis'])
-                    if result.get('lorebook_entries'):
-                        all_lorebook_entries.append(result['lorebook_entries'])
+                if result.success:
+                    summaries.append(result.summary)
+                    all_results.extend(result.tool_results)
+                    if result.character_analysis:
+                        all_character_analyses.append(result.character_analysis)
+                    if result.lorebook_entries:
+                        all_lorebook_entries.append(result.lorebook_entries)
                 else:
-                    errors.append(f'切片 {result["index"] + 1} 处理失败')
+                    errors.append(f'切片 {result.index + 1} 处理失败')
             except Exception as e:
                 task = future_to_task[future]
                 errors.append(f'切片 {task.slice_index + 1} 处理异常: {str(e)}')
