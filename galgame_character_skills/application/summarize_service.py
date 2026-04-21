@@ -52,6 +52,27 @@ class SliceExecutionResult:
         return getattr(self, key, default)
 
 
+@dataclass
+class SummarizeExecutionAggregate:
+    summaries: list = None
+    errors: list = None
+    all_results: list = None
+    all_character_analyses: list = None
+    all_lorebook_entries: list = None
+
+    def __post_init__(self):
+        if self.summaries is None:
+            self.summaries = []
+        if self.errors is None:
+            self.errors = []
+        if self.all_results is None:
+            self.all_results = []
+        if self.all_character_analyses is None:
+            self.all_character_analyses = []
+        if self.all_lorebook_entries is None:
+            self.all_lorebook_entries = []
+
+
 def _to_slice_task(args):
     if isinstance(args, SliceTask):
         return args
@@ -385,11 +406,7 @@ def _build_slice_tasks(current_slices, summary_dir, request_data, config, checkp
 
 
 def _execute_slice_tasks(tasks, request_data, runtime):
-    summaries = []
-    errors = []
-    all_results = []
-    all_character_analyses = []
-    all_lorebook_entries = []
+    execution = SummarizeExecutionAggregate()
 
     with runtime.executor_gateway.create(max_workers=request_data.concurrency) as executor:
         future_to_task = {
@@ -408,25 +425,19 @@ def _execute_slice_tasks(tasks, request_data, runtime):
             try:
                 result = future.result()
                 if result.success:
-                    summaries.append(result.summary)
-                    all_results.extend(result.tool_results)
+                    execution.summaries.append(result.summary)
+                    execution.all_results.extend(result.tool_results)
                     if result.character_analysis:
-                        all_character_analyses.append(result.character_analysis)
+                        execution.all_character_analyses.append(result.character_analysis)
                     if result.lorebook_entries:
-                        all_lorebook_entries.append(result.lorebook_entries)
+                        execution.all_lorebook_entries.append(result.lorebook_entries)
                 else:
-                    errors.append(f'切片 {result.index + 1} 处理失败')
+                    execution.errors.append(f'切片 {result.index + 1} 处理失败')
             except Exception as e:
                 task = future_to_task[future]
-                errors.append(f'切片 {task.slice_index + 1} 处理异常: {str(e)}')
+                execution.errors.append(f'切片 {task.slice_index + 1} 处理异常: {str(e)}')
 
-    return {
-        'summaries': summaries,
-        'errors': errors,
-        'all_results': all_results,
-        'all_character_analyses': all_character_analyses,
-        'all_lorebook_entries': all_lorebook_entries,
-    }
+    return execution
 
 
 def _finalize_summarize_result(request_data, current_slices, summary_dir, execution, checkpoint_id, runtime):
@@ -435,31 +446,31 @@ def _finalize_summarize_result(request_data, current_slices, summary_dir, execut
         runtime.storage_gateway.write_json(
             analysis_summary_path,
             {
-                'character_analyses': execution['all_character_analyses'],
-                'lorebook_entries': execution['all_lorebook_entries'],
+                'character_analyses': execution.all_character_analyses,
+                'lorebook_entries': execution.all_lorebook_entries,
             },
             ensure_ascii=False,
             indent=2,
         )
 
-    if execution['errors'] and len(execution['summaries']) == 0:
-        runtime.checkpoint_gateway.mark_failed(checkpoint_id, f"{len(execution['errors'])} 个切片全部失败")
+    if execution.errors and len(execution.summaries) == 0:
+        runtime.checkpoint_gateway.mark_failed(checkpoint_id, f"{len(execution.errors)} 个切片全部失败")
         return fail_result(
-            f"归纳失败，{len(execution['errors'])} 个切片失败",
+            f"归纳失败，{len(execution.errors)} 个切片失败",
             slice_count=len(current_slices),
-            errors=execution['errors'],
-            results=execution['all_results'],
+            errors=execution.errors,
+            results=execution.all_results,
             checkpoint_id=checkpoint_id,
             can_resume=True,
         )
 
-    if execution['errors']:
-        runtime.checkpoint_gateway.mark_failed(checkpoint_id, f"{len(execution['errors'])} 个切片失败，可恢复继续处理")
+    if execution.errors:
+        runtime.checkpoint_gateway.mark_failed(checkpoint_id, f"{len(execution.errors)} 个切片失败，可恢复继续处理")
         return ok_result(
-            message=f"归纳部分完成，{len(execution['errors'])} 个切片失败，可通过任务列表继续",
+            message=f"归纳部分完成，{len(execution.errors)} 个切片失败，可通过任务列表继续",
             slice_count=len(current_slices),
-            errors=execution['errors'],
-            results=execution['all_results'],
+            errors=execution.errors,
+            results=execution.all_results,
             checkpoint_id=checkpoint_id,
             can_resume=True,
         )
@@ -468,7 +479,7 @@ def _finalize_summarize_result(request_data, current_slices, summary_dir, execut
     return ok_result(
         message='归纳完成',
         slice_count=len(current_slices),
-        results=execution['all_results'],
+        results=execution.all_results,
         checkpoint_id=checkpoint_id,
     )
 
