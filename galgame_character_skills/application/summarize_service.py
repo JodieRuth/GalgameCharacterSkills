@@ -13,6 +13,13 @@ def _build_checkpoint_slice_content(mode, output_file_path, choice, result, stor
     if mode == 'chara_card':
         return storage_gateway.read_text(output_file_path)
 
+    # Keep checkpoint content aligned with the actual markdown file when present.
+    try:
+        if storage_gateway.exists(output_file_path):
+            return storage_gateway.read_text(output_file_path)
+    except Exception:
+        pass
+
     if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
         for tool_call in choice.message.tool_calls:
             if hasattr(tool_call, 'function') and tool_call.function.name == 'write_file':
