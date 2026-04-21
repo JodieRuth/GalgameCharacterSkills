@@ -2,6 +2,7 @@ import json
 import os
 import time
 from concurrent.futures import as_completed
+from dataclasses import dataclass
 
 from ..checkpoint import load_resumable_checkpoint
 from .checkpoint_prepare import prepare_request_with_checkpoint
@@ -11,6 +12,50 @@ from ..utils.request_config import build_llm_config
 from ..utils.input_normalization import extract_file_paths
 from ..domain import SummarizeRequest, ok_result, fail_result
 from ..workspace import get_workspace_summaries_dir
+
+
+@dataclass(frozen=True)
+class SliceTask:
+    slice_index: int
+    slice_content: str
+    role_name: str
+    instruction: str
+    output_file_path: str
+    config: dict
+    output_language: str
+    mode: str
+    vndb_data: object
+    checkpoint_id: str | None
+
+
+def _to_slice_task(args):
+    if isinstance(args, SliceTask):
+        return args
+
+    (
+        slice_index,
+        slice_content,
+        role_name,
+        instruction,
+        output_file_path,
+        config,
+        output_language,
+        mode,
+        vndb_data,
+        checkpoint_id,
+    ) = args
+    return SliceTask(
+        slice_index=slice_index,
+        slice_content=slice_content,
+        role_name=role_name,
+        instruction=instruction,
+        output_file_path=output_file_path,
+        config=config,
+        output_language=output_language,
+        mode=mode,
+        vndb_data=vndb_data,
+        checkpoint_id=checkpoint_id,
+    )
 
 
 def _build_checkpoint_slice_content(mode, output_file_path, choice, result, storage_gateway):
@@ -86,8 +131,12 @@ def _persist_slice_checkpoint_if_needed(checkpoint_id, slice_index, mode, output
 
 
 def _process_single_slice(args, ckpt_manager, llm_gateway, tool_gateway, storage_gateway):
-    slice_index, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id = args
-    llm_client = llm_gateway.create_client(config)
+    task = _to_slice_task(args)
+    slice_index = task.slice_index
+    output_file_path = task.output_file_path
+    mode = task.mode
+    checkpoint_id = task.checkpoint_id
+    llm_client = llm_gateway.create_client(task.config)
 
     if checkpoint_id:
         existing = ckpt_manager.get_slice_result(checkpoint_id, slice_index)
@@ -125,9 +174,23 @@ def _process_single_slice(args, ckpt_manager, llm_gateway, tool_gateway, storage
     time.sleep(0.5 * slice_index)
 
     if mode == 'chara_card':
-        response = llm_client.summarize_content_for_chara_card(slice_content, role_name, instruction, output_file_path, output_language, vndb_data)
+        response = llm_client.summarize_content_for_chara_card(
+            task.slice_content,
+            task.role_name,
+            task.instruction,
+            output_file_path,
+            task.output_language,
+            task.vndb_data,
+        )
     else:
-        response = llm_client.summarize_content(slice_content, role_name, instruction, output_file_path, output_language, vndb_data)
+        response = llm_client.summarize_content(
+            task.slice_content,
+            task.role_name,
+            task.instruction,
+            output_file_path,
+            task.output_language,
+            task.vndb_data,
+        )
 
     result = {
         'index': slice_index,
@@ -292,18 +355,20 @@ def _build_slice_tasks(current_slices, summary_dir, request_data, config, checkp
             output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{request_data.role_name}.json")
         else:
             output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{request_data.role_name}.md")
-        tasks.append((
-            i,
-            slice_content,
-            request_data.role_name,
-            request_data.instruction,
-            output_file_path,
-            config,
-            request_data.output_language,
-            request_data.mode,
-            request_data.vndb_data,
-            checkpoint_id,
-        ))
+        tasks.append(
+            SliceTask(
+                slice_index=i,
+                slice_content=slice_content,
+                role_name=request_data.role_name,
+                instruction=request_data.instruction,
+                output_file_path=output_file_path,
+                config=config,
+                output_language=request_data.output_language,
+                mode=request_data.mode,
+                vndb_data=request_data.vndb_data,
+                checkpoint_id=checkpoint_id,
+            )
+        )
     return tasks
 
 
@@ -341,7 +406,7 @@ def _execute_slice_tasks(tasks, request_data, runtime):
                     errors.append(f'切片 {result["index"] + 1} 处理失败')
             except Exception as e:
                 task = future_to_task[future]
-                errors.append(f'切片 {task[0] + 1} 处理异常: {str(e)}')
+                errors.append(f'切片 {task.slice_index + 1} 处理异常: {str(e)}')
 
     return {
         'summaries': summaries,
