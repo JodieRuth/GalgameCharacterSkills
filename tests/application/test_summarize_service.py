@@ -218,3 +218,51 @@ def test_build_checkpoint_slice_content_falls_back_when_file_read_fails():
         storage_gateway=FakeStorageGateway(),
     )
     assert content == "summary-from-result"
+
+
+def test_sanitize_resume_progress_moves_empty_completed_to_pending():
+    calls = {}
+
+    class FakeCheckpointGateway:
+        def get_slice_result(self, checkpoint_id, index):
+            if index == 0:
+                return "ok-content"
+            if index == 1:
+                return ""
+            return None
+
+        def update_progress(self, checkpoint_id, completed_items=None, pending_items=None, **kwargs):
+            calls["checkpoint_id"] = checkpoint_id
+            calls["completed_items"] = completed_items
+            calls["pending_items"] = pending_items
+
+    ckpt = {
+        "task_type": "summarize",
+        "progress": {
+            "completed_items": [0, 1, 2],
+            "pending_items": [3],
+        },
+    }
+    summarize_service._sanitize_resume_progress(ckpt, FakeCheckpointGateway(), "ckpt-1")
+
+    assert ckpt["progress"]["completed_items"] == [0]
+    assert ckpt["progress"]["pending_items"] == [1, 2, 3]
+    assert calls["checkpoint_id"] == "ckpt-1"
+    assert calls["completed_items"] == [0]
+    assert calls["pending_items"] == [1, 2, 3]
+
+
+def test_sanitize_resume_progress_skips_non_summarize_tasks():
+    class FakeCheckpointGateway:
+        def get_slice_result(self, checkpoint_id, index):
+            raise AssertionError("should not be called")
+
+        def update_progress(self, checkpoint_id, **kwargs):
+            raise AssertionError("should not be called")
+
+    ckpt = {
+        "task_type": "generate_skills",
+        "progress": {"completed_items": [0], "pending_items": []},
+    }
+    summarize_service._sanitize_resume_progress(ckpt, FakeCheckpointGateway(), "ckpt-2")
+    assert ckpt["progress"]["completed_items"] == [0]
