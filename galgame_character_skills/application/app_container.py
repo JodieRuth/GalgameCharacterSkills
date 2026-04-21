@@ -3,7 +3,7 @@ from typing import Callable, Any
 
 from ..utils.app_runtime import configure_werkzeug_logging
 from ..checkpoint import CheckpointManager
-from ..utils.file_processor import FileProcessor
+from ..files import FileProcessor
 from ..utils.image_card_utils import download_vndb_image, embed_json_in_png
 from ..utils.path_utils import get_base_dir
 from ..utils.token_utils import estimate_tokens_from_text

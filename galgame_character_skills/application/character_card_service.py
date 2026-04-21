@@ -2,7 +2,7 @@ import json
 import os
 
 from ..checkpoint import load_resumable_checkpoint
-from ..utils.summary_discovery import find_role_analysis_summary_file
+from ..files import find_role_analysis_summary_file
 from ..utils.request_config import build_llm_config
 from ..utils.llm_budget import get_model_context_limit, calculate_compression_threshold
 from ..utils.compression_service import compress_analyses_with_llm

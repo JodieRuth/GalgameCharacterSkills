@@ -2,7 +2,7 @@ import os
 import tiktoken
 from werkzeug.utils import secure_filename
 
-from .path_utils import get_base_dir
+from ..utils.path_utils import get_base_dir
 
 
 class FileProcessor:

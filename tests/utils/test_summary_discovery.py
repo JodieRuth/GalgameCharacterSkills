@@ -1,6 +1,6 @@
 import os
 
-from galgame_character_skills.utils import summary_discovery
+from galgame_character_skills.files import summary_discovery
 
 
 def test_discover_summary_roles_collects_md_and_json_roles(monkeypatch):

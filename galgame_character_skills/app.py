@@ -18,7 +18,7 @@ from .api.checkpoint_service import (
     delete_checkpoint_result,
     resume_checkpoint_with_payload_result,
 )
-from .utils.summary_discovery import discover_summary_roles, find_summary_files_for_role
+from .files import discover_summary_roles, find_summary_files_for_role
 from .utils.input_normalization import extract_file_paths
 from .utils.json_adapter import JsonApiAdapter
 from .api.vndb_service import fetch_vndb_character
