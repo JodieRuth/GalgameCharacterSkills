@@ -178,3 +178,43 @@ def test_process_single_slice_normal_mode_empty_content_fails(monkeypatch):
     assert result["success"] is False
     assert result["summary"] is None
     assert storage.saved == {}
+
+
+def test_build_checkpoint_slice_content_prefers_written_markdown():
+    class FakeStorageGateway:
+        def exists(self, path):
+            return path == "out.md"
+
+        def read_text(self, path):
+            return "saved-from-file"
+
+    choice = _FakeChoice(content="summary-from-llm", tool_calls=None)
+    result = {"summary": "summary-from-result"}
+    content = summarize_service._build_checkpoint_slice_content(
+        mode="skills",
+        output_file_path="out.md",
+        choice=choice,
+        result=result,
+        storage_gateway=FakeStorageGateway(),
+    )
+    assert content == "saved-from-file"
+
+
+def test_build_checkpoint_slice_content_falls_back_when_file_read_fails():
+    class FakeStorageGateway:
+        def exists(self, path):
+            return True
+
+        def read_text(self, path):
+            raise RuntimeError("read failed")
+
+    choice = _FakeChoice(content="summary-from-llm", tool_calls=None)
+    result = {"summary": "summary-from-result"}
+    content = summarize_service._build_checkpoint_slice_content(
+        mode="skills",
+        output_file_path="out.md",
+        choice=choice,
+        result=result,
+        storage_gateway=FakeStorageGateway(),
+    )
+    assert content == "summary-from-result"
