@@ -86,3 +86,28 @@ def test_run_character_card_tool_loop_failure_with_resume_flag(monkeypatch):
 
     assert result == {"success": False, "message": "LLM交互失败", "can_resume": True}
     assert any("last_response" in call and call["last_response"] is None for call in saves)
+
+
+def test_run_character_card_tool_loop_uses_injected_save_fn_without_manager(monkeypatch):
+    monkeypatch.setattr(
+        tool_loop,
+        "CheckpointManager",
+        lambda: (_ for _ in ()).throw(AssertionError("CheckpointManager should not be used")),
+    )
+
+    saves = []
+
+    result = tool_loop.run_character_card_tool_loop(
+        send_message=lambda msgs, tools=None, use_counter=False: _response_with_content('{"name":"A"}'),
+        tool_gateway=types.SimpleNamespace(parse_llm_json_response=lambda x: {"name": "A"}),
+        tools=[{"type": "function"}],
+        messages=[{"role": "system", "content": "x"}],
+        fields_data={"name": "", "character_book_entries": []},
+        checkpoint_id="ckpt-3",
+        initial_tool_call_count=0,
+        max_tool_calls=3,
+        save_llm_state_fn=lambda checkpoint_id, **kwargs: saves.append((checkpoint_id, kwargs)),
+    )
+
+    assert result["success"] is True
+    assert len(saves) >= 1
