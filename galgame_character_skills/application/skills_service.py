@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import dataclass
 
 from ..checkpoint import load_resumable_checkpoint
 from .compression_policy import resolve_compression_policy
@@ -47,6 +48,15 @@ _on_skills_resumed = build_on_resumed_logger(
         f"{len(checkpoint_data.state.all_results)} results so far"
     )
 )
+
+
+@dataclass(frozen=True)
+class SkillsContextData:
+    summaries_text: str
+    context_mode: str
+
+    def __getitem__(self, key):
+        return getattr(self, key)
 
 
 def _prepare_generate_skills_request(data, runtime):
@@ -133,10 +143,10 @@ def _build_skill_context(summary_files, request_data, config, checkpoint_id, run
         f"strategy={strategy_name}"
     )
 
-    return {
-        'summaries_text': summaries_text,
-        'context_mode': context_mode,
-    }, None
+    return SkillsContextData(
+        summaries_text=summaries_text,
+        context_mode=context_mode,
+    ), None
 
 
 def _initialize_skill_generation(llm_interaction, summaries_text, request_data, resume_checkpoint_id, output_root_dir):
@@ -274,7 +284,7 @@ def run_generate_skills_task(
     llm_interaction = runtime.llm_gateway.create_client(config)
     init_messages, tools = _initialize_skill_generation(
         llm_interaction=llm_interaction,
-        summaries_text=context_data['summaries_text'],
+        summaries_text=context_data.summaries_text,
         request_data=request_data,
         resume_checkpoint_id=request_data.resume_checkpoint_id,
         output_root_dir=prompt_skills_root_dir,
