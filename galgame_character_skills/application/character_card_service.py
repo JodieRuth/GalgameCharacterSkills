@@ -7,7 +7,7 @@ from .compression_policy import resolve_compression_policy
 from .compression_executor import run_compression_pipeline
 from .task_prepared import PreparedGenerateCharacterCardTask
 from .task_state import CharacterCardResumeState, build_initial_state_factory, build_resume_state_loader
-from .task_result_factory import ok_task_result, fail_task_result
+from .task_result_factory import ok_task_result, fail_task_result, build_dataclass_result_mapper
 from .task_prepare_context import (
     build_on_resumed_logger,
     build_clean_payload_loader,
@@ -40,15 +40,16 @@ class CharacterCardOutputPaths:
         return getattr(self, key)
 
 
-def _to_character_card_task_result(raw_result):
-    raw_result = raw_result or {}
-    return CharacterCardTaskResult(
-        success=bool(raw_result.get("success")),
-        message=raw_result.get("message", ""),
-        can_resume=bool(raw_result.get("can_resume")),
-        fields_written=raw_result.get("fields_written", []),
-        result=raw_result.get("result", ""),
-    )
+_to_character_card_task_result = build_dataclass_result_mapper(
+    CharacterCardTaskResult,
+    {
+        "success": bool,
+        "can_resume": bool,
+        "message": lambda v: v or "",
+        "fields_written": lambda v: v or [],
+        "result": lambda v: v or "",
+    },
+)
 
 
 _load_resume_character_card_state = build_resume_state_loader(
