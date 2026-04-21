@@ -1,5 +1,6 @@
 import json
 import os
+from dataclasses import dataclass, field
 
 from ..checkpoint import load_resumable_checkpoint
 from .checkpoint_prepare import prepare_request_with_checkpoint
@@ -11,6 +12,26 @@ from ..utils.request_config import build_llm_config
 from ..utils.compression_service import compress_analyses_with_llm
 from ..domain import GenerateCharacterCardRequest, ok_result, fail_result
 from ..workspace import get_workspace_cards_dir, get_workspace_summaries_dir
+
+
+@dataclass(frozen=True)
+class CharacterCardTaskResult:
+    success: bool
+    message: str = ""
+    can_resume: bool = False
+    fields_written: list = field(default_factory=list)
+    result: str = ""
+
+
+def _to_character_card_task_result(raw_result):
+    raw_result = raw_result or {}
+    return CharacterCardTaskResult(
+        success=bool(raw_result.get("success")),
+        message=raw_result.get("message", ""),
+        can_resume=bool(raw_result.get("can_resume")),
+        fields_written=raw_result.get("fields_written", []),
+        result=raw_result.get("result", ""),
+    )
 
 
 _load_resume_character_card_state = build_resume_state_loader(
@@ -218,7 +239,7 @@ def _finalize_character_card_success(runtime, request_data, checkpoint_id, paths
         return ok_result(
             message=f"角色卡生成完成 (JSON): {paths['json_output_path']}",
             output_path=paths['json_output_path'],
-            fields_written=result.get('fields_written', []),
+            fields_written=result.fields_written,
             image_path=image_path,
             warning=f"无法读取JSON用于PNG嵌入: {str(e)}",
             checkpoint_id=checkpoint_id,
@@ -241,8 +262,8 @@ def _finalize_character_card_success(runtime, request_data, checkpoint_id, paths
     response_data = ok_result(
         message=f"角色卡生成完成: {paths['json_output_path']}",
         output_path=paths['json_output_path'],
-        fields_written=result.get('fields_written', []),
-        result=result.get('result', ''),
+        fields_written=result.fields_written,
+        result=result.result,
         checkpoint_id=checkpoint_id,
     )
 
@@ -257,14 +278,14 @@ def _finalize_character_card_success(runtime, request_data, checkpoint_id, paths
 
 
 def _handle_character_card_failure(runtime, checkpoint_id, result):
-    if result.get('can_resume'):
-        runtime.checkpoint_gateway.mark_failed(checkpoint_id, result.get('message', '生成失败'))
+    if result.can_resume:
+        runtime.checkpoint_gateway.mark_failed(checkpoint_id, result.message or '生成失败')
         return fail_result(
-            result.get('message', '生成失败'),
+            result.message or '生成失败',
             checkpoint_id=checkpoint_id,
             can_resume=True
         )
-    return fail_result(result.get('message', '生成失败'))
+    return fail_result(result.message or '生成失败')
 
 
 def run_generate_character_card_task(
@@ -298,7 +319,7 @@ def run_generate_character_card_task(
     )
 
     llm_interaction = runtime.llm_gateway.create_client(config)
-    result = llm_interaction.generate_character_card_with_tools(
+    raw_result = llm_interaction.generate_character_card_with_tools(
         request_data.role_name,
         all_character_analyses,
         all_lorebook_entries,
@@ -311,8 +332,9 @@ def run_generate_character_card_task(
         ckpt_fields_data=prepared.fields_data if request_data.resume_checkpoint_id else None,
         ckpt_iteration_count=prepared.iteration_count if request_data.resume_checkpoint_id else None
     )
+    result = _to_character_card_task_result(raw_result)
 
-    if result.get('success'):
+    if result.success:
         return _finalize_character_card_success(
             runtime=runtime,
             request_data=request_data,
