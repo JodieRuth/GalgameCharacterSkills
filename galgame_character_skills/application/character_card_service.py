@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from ..checkpoint import load_resumable_checkpoint
 from .compression_policy import resolve_compression_policy
+from .compression_executor import run_compression_pipeline
 from .task_prepared import PreparedGenerateCharacterCardTask
 from .task_state import CharacterCardResumeState, build_initial_state_factory, build_resume_state_loader
 from .task_result_factory import ok_task_result, fail_task_result
@@ -106,38 +107,39 @@ def _compress_character_analyses(all_character_analyses, request_data, config, c
         raw_estimated_tokens=raw_estimated_tokens,
         force_no_compression=request_data.force_no_compression,
     )
-    context_limit = policy["context_limit"]
-    context_limit_tokens = policy["context_limit_tokens"]
-    target_budget_tokens = context_limit_tokens
+    def _llm_compress(target_budget_tokens):
+        print("Using LLM compression for analyses")
+        llm_interaction = runtime.llm_gateway.create_client(config)
+        return compress_analyses_with_llm(
+            analyses=all_character_analyses,
+            llm_client=llm_interaction,
+            target_budget_tokens=target_budget_tokens,
+            checkpoint_id=checkpoint_id,
+            ckpt_manager=runtime.checkpoint_gateway,
+            estimate_tokens=runtime.estimate_tokens,
+        )
 
-    print(f"Model: {request_data.model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
-    print(f"Compression mode: {request_data.compression_mode}, Force no compression: {request_data.force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
+    def _fallback_compress(target_budget_tokens):
+        print("Using original compression")
+        target_count = max(1, len(all_character_analyses) * target_budget_tokens // raw_estimated_tokens)
+        return all_character_analyses[:target_count]
 
-    if policy["should_compress"]:
-        if request_data.compression_mode == 'llm':
-            print("Using LLM compression for analyses")
-            llm_interaction = runtime.llm_gateway.create_client(config)
-            all_character_analyses = compress_analyses_with_llm(
-                analyses=all_character_analyses,
-                llm_client=llm_interaction,
-                target_budget_tokens=target_budget_tokens,
-                checkpoint_id=checkpoint_id,
-                ckpt_manager=runtime.checkpoint_gateway,
-                estimate_tokens=runtime.estimate_tokens
-            )
-        else:
-            print("Using original compression")
-            target_count = max(1, len(all_character_analyses) * target_budget_tokens // raw_estimated_tokens)
-            all_character_analyses = all_character_analyses[:target_count]
+    compressed, used_compression, _, _ = run_compression_pipeline(
+        runtime=runtime,
+        model_name=request_data.model_name,
+        compression_mode=request_data.compression_mode,
+        force_no_compression=request_data.force_no_compression,
+        raw_estimated_tokens=raw_estimated_tokens,
+        policy=policy,
+        llm_compress=_llm_compress,
+        fallback_compress=_fallback_compress,
+    )
 
+    if used_compression:
+        all_character_analyses = compressed
         compressed_text = json.dumps(all_character_analyses, ensure_ascii=False)
         compressed_tokens = runtime.estimate_tokens(compressed_text)
         print(f"Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
-    else:
-        if policy["force_exceeds_limit"]:
-            print("Force no compression enabled, using full context despite exceeding limit")
-        else:
-            print(f"No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})")
 
     return all_character_analyses
 

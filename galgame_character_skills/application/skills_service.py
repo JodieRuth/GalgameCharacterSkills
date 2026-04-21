@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from ..checkpoint import load_resumable_checkpoint
 from .compression_policy import resolve_compression_policy
+from .compression_executor import run_compression_pipeline
 from .task_prepared import PreparedGenerateSkillsTask
 from .task_state import SkillsResumeState, build_initial_state_factory, build_resume_state_loader
 from .task_result_factory import ok_task_result, fail_task_result
@@ -79,41 +80,44 @@ def _build_skill_context(summary_files, request_data, config, checkpoint_id, run
         raw_estimated_tokens=raw_estimated_tokens,
         force_no_compression=request_data.force_no_compression,
     )
-    context_limit = policy["context_limit"]
-    context_limit_tokens = policy["context_limit_tokens"]
-    target_budget_tokens = context_limit_tokens
+    context_mode = "full"
+    summaries_text = raw_full_text
 
-    print(f"Model: {request_data.model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
-    print(f"Compression mode: {request_data.compression_mode}, Force no compression: {request_data.force_no_compression}, Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}")
+    def _llm_compress(target_budget_tokens):
+        print("Using LLM compression")
+        llm_interaction = runtime.llm_gateway.create_client(config)
+        return compress_summary_files_with_llm(
+            summary_files=summary_files,
+            llm_client=llm_interaction,
+            target_budget_tokens=target_budget_tokens,
+            checkpoint_id=checkpoint_id,
+            ckpt_manager=runtime.checkpoint_gateway,
+            estimate_tokens=runtime.estimate_tokens,
+        )
 
-    if policy["should_compress"]:
-        if request_data.compression_mode == 'llm':
-            print("Using LLM compression")
-            llm_interaction = runtime.llm_gateway.create_client(config)
-            summaries_text = compress_summary_files_with_llm(
-                summary_files=summary_files,
-                llm_client=llm_interaction,
-                target_budget_tokens=target_budget_tokens,
-                checkpoint_id=checkpoint_id,
-                ckpt_manager=runtime.checkpoint_gateway,
-                estimate_tokens=runtime.estimate_tokens
-            )
-            context_mode = "llm_compressed"
-        else:
-            print("Using original compression")
-            target_budget_chars = target_budget_tokens * 2
-            summaries_text = build_prioritized_skill_generation_context(
-                summary_files,
-                target_total_chars=target_budget_chars
-            )
-            context_mode = "compressed"
-    else:
-        summaries_text = raw_full_text
-        if policy["force_exceeds_limit"]:
-            context_mode = "full_forced"
-            print("Force no compression enabled, using full context despite exceeding limit")
-        else:
-            context_mode = "full"
+    def _fallback_compress(target_budget_tokens):
+        print("Using original compression")
+        target_budget_chars = target_budget_tokens * 2
+        return build_prioritized_skill_generation_context(
+            summary_files,
+            target_total_chars=target_budget_chars,
+        )
+
+    compressed, used_compression, context_limit, context_limit_tokens = run_compression_pipeline(
+        runtime=runtime,
+        model_name=request_data.model_name,
+        compression_mode=request_data.compression_mode,
+        force_no_compression=request_data.force_no_compression,
+        raw_estimated_tokens=raw_estimated_tokens,
+        policy=policy,
+        llm_compress=_llm_compress,
+        fallback_compress=_fallback_compress,
+    )
+    if used_compression:
+        summaries_text = compressed
+        context_mode = "llm_compressed" if request_data.compression_mode == "llm" else "compressed"
+    elif policy["force_exceeds_limit"]:
+        context_mode = "full_forced"
 
     if not summaries_text:
         return None, fail_result(f'未能读取角色 "{request_data.role_name}" 的归纳内容')
