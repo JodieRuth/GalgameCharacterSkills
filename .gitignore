@@ -54,3 +54,10 @@ Thumbs.db
 output/
 temp/
 *.tmp
+
+# skills
+*-skill-main
+*-skill-code
+resource/
+summaries/
+skills/
