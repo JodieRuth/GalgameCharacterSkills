@@ -3,7 +3,7 @@
 from dataclasses import MISSING, fields
 from typing import Any, Callable, TypeVar
 
-from ..domain import ok_result, fail_result
+from ...domain import ok_result, fail_result
 
 ResultT = TypeVar("ResultT")
 

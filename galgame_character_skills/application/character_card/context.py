@@ -3,13 +3,13 @@
 import json
 from typing import Any
 
-from .app_container import TaskRuntimeDependencies
-from .compression_policy import resolve_compression_policy
-from .compression_executor import run_compression_pipeline
-from .runtime_logging import log_message
-from ..compression import compress_analyses_with_llm
-from ..domain import GenerateCharacterCardRequest, fail_result
-from ..files import find_role_analysis_summary_file
+from ..app_container import TaskRuntimeDependencies
+from ..compression_policy import resolve_compression_policy
+from ..compression_executor import run_compression_pipeline
+from ..shared.runtime_logging import log_message
+from ...compression import compress_analyses_with_llm
+from ...domain import GenerateCharacterCardRequest, fail_result
+from ...files import find_role_analysis_summary_file
 
 
 def load_character_analyses(

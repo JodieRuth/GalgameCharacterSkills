@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import Any, Callable, Generic, TypeVar
 
-from ..checkpoint import load_resumable_checkpoint
-from ..gateways.checkpoint_gateway import CheckpointGateway
+from ...checkpoint import load_resumable_checkpoint
+from ...gateways.checkpoint_gateway import CheckpointGateway
 
 StateT = TypeVar("StateT")
 RequestT = TypeVar("RequestT")

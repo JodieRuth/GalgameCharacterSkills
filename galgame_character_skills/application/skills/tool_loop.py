@@ -3,12 +3,12 @@
 import json
 from typing import Any
 
-from .app_container import TaskRuntimeDependencies
-from .tool_loop_runner import ToolLoopRunState, run_checkpointed_tool_loop
-from .task_result_factory import fail_task_result
-from ..domain import GenerateSkillsRequest
-from ..llm.message_flows import build_skills_init_messages
-from ..llm.shared import LANG_NAMES, format_vndb_section
+from ..app_container import TaskRuntimeDependencies
+from ..tool_loop_runner import ToolLoopRunState, run_checkpointed_tool_loop
+from ..shared.task_result_factory import fail_task_result
+from ...domain import GenerateSkillsRequest
+from ...llm.message_flows import build_skills_init_messages
+from ...llm.shared import LANG_NAMES, format_vndb_section
 
 
 def initialize_skill_generation(

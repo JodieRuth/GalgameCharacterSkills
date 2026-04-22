@@ -3,7 +3,7 @@
 from typing import Any, Callable
 
 from .app_container import TaskRuntimeDependencies
-from .runtime_logging import log_message
+from .shared.runtime_logging import log_message
 
 
 def run_compression_pipeline(

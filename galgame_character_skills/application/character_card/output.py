@@ -4,10 +4,10 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from .app_container import TaskRuntimeDependencies
-from .runtime_logging import log_message
-from .task_result_factory import ok_task_result
-from ..domain import GenerateCharacterCardRequest
+from ..app_container import TaskRuntimeDependencies
+from ..shared.runtime_logging import log_message
+from ..shared.task_result_factory import ok_task_result
+from ...domain import GenerateCharacterCardRequest
 
 
 @dataclass(frozen=True)

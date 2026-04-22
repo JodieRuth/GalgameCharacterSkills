@@ -3,27 +3,27 @@
 import os
 from typing import Any
 
-from ..checkpoint import load_resumable_checkpoint
-from .app_container import TaskRuntimeDependencies
-from .task_prepared import PreparedSummarizeTask
-from .task_result_factory import ok_task_result, fail_task_result
-from .task_state import SummarizeResumeState
-from .task_prepare_context import (
+from ...checkpoint import load_resumable_checkpoint
+from ..app_container import TaskRuntimeDependencies
+from ..shared.task_prepared import PreparedSummarizeTask
+from ..shared.task_result_factory import ok_task_result, fail_task_result
+from ..shared.task_state import SummarizeResumeState
+from ..shared.task_prepare_context import (
     build_basic_prepared_builder,
     build_on_resumed_logger,
     prepare_task_context,
 )
-from .summarize_checkpoint import (
+from .checkpoint import (
     build_summarize_resumed_handler,
 )
-from .summarize_slice_executor import (
+from .slice_executor import (
     SliceTask,
     SummarizeExecutionAggregate,
     execute_slice_tasks,
 )
-from ..config.request_config import build_llm_config
-from ..utils.input_normalization import extract_file_paths
-from ..domain import SummarizeRequest, fail_result, TASK_TYPE_SUMMARIZE
+from ...config.request_config import build_llm_config
+from ...utils.input_normalization import extract_file_paths
+from ...domain import SummarizeRequest, fail_result, TASK_TYPE_SUMMARIZE
 
 
 _build_prepared_summarize_task = build_basic_prepared_builder(PreparedSummarizeTask)

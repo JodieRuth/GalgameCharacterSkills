@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from types import SimpleNamespace
 
-from galgame_character_skills.application import task_prepare_context as prepare_module
+from galgame_character_skills.application.shared import task_prepare_context as prepare_module
 
 
 def test_chain_on_resumed_calls_handlers_in_order():

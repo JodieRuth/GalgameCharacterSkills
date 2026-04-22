@@ -3,13 +3,13 @@
 from dataclasses import dataclass
 from typing import Any
 
-from .app_container import TaskRuntimeDependencies
-from .compression_policy import resolve_compression_policy
-from .compression_executor import run_compression_pipeline
-from .runtime_logging import log_message
-from ..compression import compress_summary_files_with_llm
-from ..domain import GenerateSkillsRequest, fail_result
-from ..skills import (
+from ..app_container import TaskRuntimeDependencies
+from ..compression_policy import resolve_compression_policy
+from ..compression_executor import run_compression_pipeline
+from ..shared.runtime_logging import log_message
+from ...compression import compress_summary_files_with_llm
+from ...domain import GenerateSkillsRequest, fail_result
+from ...skills import (
     build_full_skill_generation_context,
     build_prioritized_skill_generation_context,
 )

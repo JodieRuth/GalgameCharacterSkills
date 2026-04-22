@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, TypeVar
 
-from ..gateways.checkpoint_gateway import CheckpointGateway
+from ...gateways.checkpoint_gateway import CheckpointGateway
 
 
 @dataclass(frozen=True)

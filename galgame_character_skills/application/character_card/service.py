@@ -3,27 +3,27 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..checkpoint import load_resumable_checkpoint
-from .app_container import TaskRuntimeDependencies
-from .character_card_context import load_character_analyses, compress_character_analyses
-from .character_card_output import (
+from ...checkpoint import load_resumable_checkpoint
+from ..app_container import TaskRuntimeDependencies
+from .context import load_character_analyses, compress_character_analyses
+from .output import (
     CharacterCardOutputPaths,
     finalize_character_card_success,
     prepare_output_paths,
 )
-from .task_prepared import PreparedGenerateCharacterCardTask
-from .task_state import CharacterCardResumeState, build_initial_state_factory, build_resume_state_loader
-from .task_result_factory import ok_task_result, fail_task_result, build_dataclass_result_mapper
-from .task_prepare_context import (
+from ..shared.task_prepared import PreparedGenerateCharacterCardTask
+from ..shared.task_state import CharacterCardResumeState, build_initial_state_factory, build_resume_state_loader
+from ..shared.task_result_factory import ok_task_result, fail_task_result, build_dataclass_result_mapper
+from ..shared.task_prepare_context import (
     build_on_resumed_logger,
     build_clean_payload_loader,
     build_prepared_state_builder,
     prepare_task_context,
 )
-from ..config.request_config import build_llm_config
-from ..llm.character_card_flow import generate_character_card
-from ..llm.shared import LANG_NAMES, format_vndb_section
-from ..domain import GenerateCharacterCardRequest, fail_result, TASK_TYPE_GENERATE_CHARA_CARD
+from ...config.request_config import build_llm_config
+from ...llm.character_card_flow import generate_character_card
+from ...llm.shared import LANG_NAMES, format_vndb_section
+from ...domain import GenerateCharacterCardRequest, fail_result, TASK_TYPE_GENERATE_CHARA_CARD
 
 
 @dataclass(frozen=True)

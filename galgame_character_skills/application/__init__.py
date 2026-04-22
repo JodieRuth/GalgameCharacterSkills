@@ -1,8 +1,8 @@
 """应用层导出模块，集中暴露核心业务用例入口。"""
 
-from .summarize_service import run_summarize_task
-from .skills_service import run_generate_skills_task
-from .character_card_service import run_generate_character_card_task
+from .summarize.service import run_summarize_task
+from .skills.service import run_generate_skills_task
+from .character_card.service import run_generate_character_card_task
 from .app_container import (
     AppDependencies,
     TaskRuntimeDependencies,

@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
-from galgame_character_skills.application import summarize_checkpoint
-from galgame_character_skills.application import summarize_slice_executor
-from galgame_character_skills.application import summarize_service
+from galgame_character_skills.application.summarize import checkpoint as summarize_checkpoint
+from galgame_character_skills.application.summarize import service as summarize_service
+from galgame_character_skills.application.summarize import slice_executor as summarize_slice_executor
 from galgame_character_skills.domain import TASK_TYPE_SUMMARIZE, TASK_TYPE_GENERATE_SKILLS
 
 

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from ..domain import SummarizeRequest, GenerateSkillsRequest, GenerateCharacterCardRequest
+from ...domain import SummarizeRequest, GenerateSkillsRequest, GenerateCharacterCardRequest
 
 RequestT = TypeVar("RequestT")
 

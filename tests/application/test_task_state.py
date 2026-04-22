@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from galgame_character_skills.application.task_state import (
+from galgame_character_skills.application.shared.task_state import (
     SkillsResumeState,
     CharacterCardResumeState,
     build_initial_state_factory,

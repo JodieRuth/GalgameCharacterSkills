@@ -2,7 +2,7 @@
 
 from typing import Any, Callable, TypeVar
 
-from .app_container import TaskRuntimeDependencies
+from ..app_container import TaskRuntimeDependencies
 from .checkpoint_prepare import prepare_request_with_checkpoint
 from .runtime_logging import log_message
 

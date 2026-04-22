@@ -2,23 +2,23 @@
 
 from typing import Any
 
-from ..checkpoint import load_resumable_checkpoint
-from .app_container import TaskRuntimeDependencies
-from .skills_context import SkillsContextData, build_skill_context
-from .skills_finalize import finalize_generate_skills
-from .skills_tool_loop import initialize_skill_generation, run_skill_tool_loop
-from .task_prepared import PreparedGenerateSkillsTask
-from .task_state import SkillsResumeState, build_initial_state_factory, build_resume_state_loader
-from .task_result_factory import fail_task_result
-from .task_prepare_context import (
+from ...checkpoint import load_resumable_checkpoint
+from ..app_container import TaskRuntimeDependencies
+from .context import SkillsContextData, build_skill_context
+from .finalize import finalize_generate_skills
+from .tool_loop import initialize_skill_generation, run_skill_tool_loop
+from ..shared.task_prepared import PreparedGenerateSkillsTask
+from ..shared.task_state import SkillsResumeState, build_initial_state_factory, build_resume_state_loader
+from ..shared.task_result_factory import fail_task_result
+from ..shared.task_prepare_context import (
     build_on_resumed_logger,
     build_clean_payload_loader,
     build_prepared_state_builder,
     prepare_task_context,
 )
-from ..files import find_role_summary_markdown_files
-from ..config.request_config import build_llm_config
-from ..domain import GenerateSkillsRequest, fail_result, TASK_TYPE_GENERATE_SKILLS
+from ...files import find_role_summary_markdown_files
+from ...config.request_config import build_llm_config
+from ...domain import GenerateSkillsRequest, fail_result, TASK_TYPE_GENERATE_SKILLS
 
 
 _load_resume_skills_state = build_resume_state_loader(

@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
-from galgame_character_skills.application import character_card_context
-from galgame_character_skills.application import character_card_output
-from galgame_character_skills.application import character_card_service
+from galgame_character_skills.application.character_card import context as character_card_context
+from galgame_character_skills.application.character_card import output as character_card_output
+from galgame_character_skills.application.character_card import service as character_card_service
 
 
 def test_generate_character_card_task_resume_checkpoint_failure_passthrough(monkeypatch):

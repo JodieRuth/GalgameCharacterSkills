@@ -3,9 +3,9 @@
 from typing import Any
 
 from ..application.app_container import TaskRuntimeDependencies
-from ..application.summarize_service import run_summarize_task
-from ..application.skills_service import run_generate_skills_task
-from ..application.character_card_service import run_generate_character_card_task
+from ..application.summarize.service import run_summarize_task
+from ..application.skills.service import run_generate_skills_task
+from ..application.character_card.service import run_generate_character_card_task
 from .validators import require_non_empty_field
 
 

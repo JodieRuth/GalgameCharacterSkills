@@ -6,11 +6,11 @@ from concurrent.futures import as_completed
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .app_container import TaskRuntimeDependencies
-from .runtime_logging import log_message
-from .summarize_checkpoint import persist_slice_checkpoint_if_needed
-from ..llm.message_flows import send_summarize_content, send_summarize_chara_card_content
-from ..llm.shared import LANG_NAMES, format_vndb_section
+from ..app_container import TaskRuntimeDependencies
+from ..shared.runtime_logging import log_message
+from .checkpoint import persist_slice_checkpoint_if_needed
+from ...llm.message_flows import send_summarize_content, send_summarize_chara_card_content
+from ...llm.shared import LANG_NAMES, format_vndb_section
 
 
 @dataclass(frozen=True)

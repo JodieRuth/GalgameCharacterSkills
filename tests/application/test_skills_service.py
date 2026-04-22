@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
-from galgame_character_skills.application import skills_context
-from galgame_character_skills.application import skills_finalize
-from galgame_character_skills.application import skills_service
-from galgame_character_skills.application import skills_tool_loop
+from galgame_character_skills.application.skills import context as skills_context
+from galgame_character_skills.application.skills import finalize as skills_finalize
+from galgame_character_skills.application.skills import service as skills_service
+from galgame_character_skills.application.skills import tool_loop as skills_tool_loop
 
 
 def test_generate_skills_task_resume_checkpoint_failure_passthrough(monkeypatch):

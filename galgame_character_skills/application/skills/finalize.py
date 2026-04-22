@@ -3,10 +3,10 @@
 import os
 from typing import Any
 
-from .app_container import TaskRuntimeDependencies
-from .task_result_factory import ok_task_result
-from ..domain import GenerateSkillsRequest
-from ..skills import append_vndb_info_to_skill_md, create_code_skill_copy
+from ..app_container import TaskRuntimeDependencies
+from ..shared.task_result_factory import ok_task_result
+from ...domain import GenerateSkillsRequest
+from ...skills import append_vndb_info_to_skill_md, create_code_skill_copy
 
 
 def finalize_generate_skills(

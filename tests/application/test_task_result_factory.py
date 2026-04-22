@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from galgame_character_skills.application.task_result_factory import build_dataclass_result_mapper
+from galgame_character_skills.application.shared.task_result_factory import build_dataclass_result_mapper
 
 
 @dataclass(frozen=True)

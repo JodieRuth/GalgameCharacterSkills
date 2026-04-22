@@ -3,10 +3,10 @@
 import json
 from typing import Any, Callable
 
-from .app_container import TaskRuntimeDependencies
-from .runtime_logging import log_message
-from .task_prepare_context import chain_on_resumed
-from ..domain import TASK_TYPE_SUMMARIZE
+from ..app_container import TaskRuntimeDependencies
+from ..shared.runtime_logging import log_message
+from ..shared.task_prepare_context import chain_on_resumed
+from ...domain import TASK_TYPE_SUMMARIZE
 
 
 def build_checkpoint_slice_content(
