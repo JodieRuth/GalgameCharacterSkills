@@ -39,6 +39,8 @@
 5. `routes/*.md`
 6. `api/*.md`
 7. `application/*.md`
+8. `checkpoint/*.md`
+9. `gateways/*.md`
 
 
 ## 3. 文档结构约定
