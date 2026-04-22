@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from galgame_character_skills.application import skills_context
 from galgame_character_skills.application import skills_service
 
 
@@ -67,7 +68,7 @@ def test_generate_skills_task_reads_summaries_from_workspace(monkeypatch):
     monkeypatch.setattr(skills_service, "get_workspace_summaries_dir", lambda: "D:/workspace/summaries")
     monkeypatch.setattr(skills_service, "get_workspace_skills_dir", lambda: "D:/workspace/skills")
     monkeypatch.setattr(skills_service, "find_role_summary_markdown_files", lambda base, role: [f"{base}/a.md"])
-    monkeypatch.setattr(skills_service, "build_full_skill_generation_context", lambda files: "summary")
+    monkeypatch.setattr(skills_context, "build_full_skill_generation_context", lambda files: "summary")
     monkeypatch.setattr(skills_service, "append_vndb_info_to_skill_md", lambda *args, **kwargs: None)
     monkeypatch.setattr(skills_service, "create_code_skill_copy", lambda *args, **kwargs: None)
 

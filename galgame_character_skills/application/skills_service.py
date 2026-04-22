@@ -2,13 +2,11 @@
 
 import json
 import os
-from dataclasses import dataclass
 from typing import Any
 
 from ..checkpoint import load_resumable_checkpoint
 from .app_container import TaskRuntimeDependencies
-from .compression_policy import resolve_compression_policy
-from .compression_executor import run_compression_pipeline
+from .skills_context import SkillsContextData, build_skill_context
 from .task_prepared import PreparedGenerateSkillsTask
 from .task_state import SkillsResumeState, build_initial_state_factory, build_resume_state_loader
 from .task_result_factory import ok_task_result, fail_task_result
@@ -24,10 +22,7 @@ from ..config.request_config import build_llm_config
 from ..skills import (
     append_vndb_info_to_skill_md,
     create_code_skill_copy,
-    build_full_skill_generation_context,
-    build_prioritized_skill_generation_context,
 )
-from ..compression import compress_summary_files_with_llm
 from ..domain import GenerateSkillsRequest, fail_result
 from ..workspace import get_workspace_skills_dir, get_workspace_summaries_dir
 
@@ -52,16 +47,6 @@ _on_skills_resumed = build_on_resumed_logger(
         f"{len(checkpoint_data.state.all_results)} results so far"
     )
 )
-
-
-@dataclass(frozen=True)
-class SkillsContextData:
-    summaries_text: str
-    context_mode: str
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
 
 def _prepare_generate_skills_request(
     data: dict[str, Any],
@@ -91,102 +76,6 @@ def _prepare_generate_skills_request(
         build_prepared=_build_prepared_skills_task,
         on_resumed=_on_skills_resumed,
     )
-
-
-def _build_skill_context(
-    summary_files: list[str],
-    request_data: GenerateSkillsRequest,
-    config: dict[str, Any],
-    checkpoint_id: str,
-    runtime: TaskRuntimeDependencies,
-) -> tuple[SkillsContextData | None, dict[str, Any] | None]:
-    """构建技能生成上下文。
-
-    Args:
-        summary_files: summary 文件路径列表。
-        request_data: 技能生成请求。
-        config: LLM 配置。
-        checkpoint_id: checkpoint 标识。
-        runtime: 任务运行时依赖。
-
-    Returns:
-        tuple[SkillsContextData | None, dict[str, Any] | None]: 上下文数据和错误结果。
-
-    Raises:
-        Exception: 上下文构建或压缩失败时向上抛出。
-    """
-    raw_full_text = build_full_skill_generation_context(summary_files)
-    raw_total_chars = len(raw_full_text)
-    raw_estimated_tokens = runtime.estimate_tokens(raw_full_text)
-    policy = resolve_compression_policy(
-        model_name=request_data.model_name,
-        raw_estimated_tokens=raw_estimated_tokens,
-        force_no_compression=request_data.force_no_compression,
-    )
-    context_mode = "full"
-    summaries_text = raw_full_text
-
-    def _llm_compress(target_budget_tokens: int) -> str:
-        print("Using LLM compression")
-        llm_interaction = runtime.llm_gateway.create_client(config)
-        return compress_summary_files_with_llm(
-            summary_files=summary_files,
-            llm_client=llm_interaction,
-            target_budget_tokens=target_budget_tokens,
-            checkpoint_id=checkpoint_id,
-            ckpt_manager=runtime.checkpoint_gateway,
-            estimate_tokens=runtime.estimate_tokens,
-        )
-
-    def _fallback_compress(target_budget_tokens: int) -> str:
-        print("Using original compression")
-        target_budget_chars = target_budget_tokens * 2
-        return build_prioritized_skill_generation_context(
-            summary_files,
-            target_total_chars=target_budget_chars,
-        )
-
-    compressed, used_compression, context_limit, context_limit_tokens = run_compression_pipeline(
-        runtime=runtime,
-        model_name=request_data.model_name,
-        compression_mode=request_data.compression_mode,
-        force_no_compression=request_data.force_no_compression,
-        raw_estimated_tokens=raw_estimated_tokens,
-        policy=policy,
-        llm_compress=_llm_compress,
-        fallback_compress=_fallback_compress,
-    )
-    if used_compression:
-        summaries_text = compressed
-        context_mode = "llm_compressed" if request_data.compression_mode == "llm" else "compressed"
-    elif policy["force_exceeds_limit"]:
-        context_mode = "full_forced"
-
-    if not summaries_text:
-        return None, fail_result(f'未能读取角色 "{request_data.role_name}" 的归纳内容')
-
-    compressed_chars = len(summaries_text)
-    estimated_tokens = runtime.estimate_tokens(summaries_text)
-    compression_ratio = (compressed_chars / raw_total_chars) if raw_total_chars else 0
-    strategy_name = {
-        'full': 'full_context',
-        'full_forced': 'full_context_no_compression',
-        'compressed': 'head_tail_weighted_1_2_then_key_sections',
-        'llm_compressed': 'llm_deduplication'
-    }.get(context_mode, 'unknown')
-
-    print(
-        f"role={request_data.role_name} files={len(summary_files)} mode={context_mode} "
-        f"raw_chars={raw_total_chars} raw_estimated_tokens={raw_estimated_tokens} "
-        f"final_chars={compressed_chars} final_estimated_tokens={estimated_tokens} "
-        f"compression_ratio={compression_ratio:.2%} "
-        f"strategy={strategy_name}"
-    )
-
-    return SkillsContextData(
-        summaries_text=summaries_text,
-        context_mode=context_mode,
-    ), None
 
 
 def _initialize_skill_generation(
@@ -393,7 +282,7 @@ def run_generate_skills_task(
     runtime.storage_gateway.makedirs(skills_root_dir, exist_ok=True)
     prompt_skills_root_dir = skills_root_dir.replace("\\", "/")
 
-    context_data, error = _build_skill_context(
+    context_data, error = build_skill_context(
         summary_files=summary_files,
         request_data=request_data,
         config=config,
