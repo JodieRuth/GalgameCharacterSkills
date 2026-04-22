@@ -6,6 +6,7 @@ from typing import Any
 from ..gateways.tool_gateway import DefaultToolGateway
 from .transport import CompletionTransport
 from .runtime import LLMRequestRuntime
+from .provider_config import normalize_model_name, build_completion_kwargs
 from .tool_loop import run_character_card_tool_loop
 from .task_flows import (
     build_write_field_tools,
@@ -155,52 +156,6 @@ class LLMInteraction:
         """构造请求级运行时实例。"""
         return cls._runtime_cls(total_requests=total_requests)
 
-    def _normalize_model_name(self) -> str:
-        """规范化模型名称。"""
-        model = self.modelname
-        baseurl = self.baseurl.lower() if self.baseurl else ''
-
-        if model and '/' not in model:
-            if 'deepseek' in baseurl:
-                return f"deepseek/{model}"
-            if 'anthropic' in baseurl or 'claude' in baseurl:
-                return f"anthropic/{model}"
-            if 'gemini' in baseurl or 'google' in baseurl:
-                return f"google/{model}"
-            return f"openai/{model}"
-        return model
-
-    def _build_completion_kwargs(
-        self,
-        model: str,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]] | None,
-    ) -> dict[str, Any]:
-        """构造 completion 请求参数。"""
-        kwargs = {
-            "model": model,
-            "messages": messages,
-            "timeout": 300
-        }
-
-        if 'google' in model or 'gemini' in model:
-            kwargs["safety_settings"] = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-            ]
-
-        if tools:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
-
-        if self.apikey:
-            kwargs["api_key"] = self.apikey
-        if self.baseurl:
-            kwargs["api_base"] = self.baseurl
-        return kwargs
-
     def _log_request_start(
         self,
         model: str,
@@ -253,9 +208,15 @@ class LLMInteraction:
         """
         if max_retries is None:
             max_retries = self.max_retries
-        model = self._normalize_model_name()
+        model = normalize_model_name(self.modelname, self.baseurl)
         self._log_request_start(model=model, messages=messages, tools=tools, use_counter=use_counter)
-        kwargs = self._build_completion_kwargs(model=model, messages=messages, tools=tools)
+        kwargs = build_completion_kwargs(
+            model=model,
+            messages=messages,
+            tools=tools,
+            apikey=self.apikey,
+            baseurl=self.baseurl,
+        )
         
         print(f"[LLM] Attempt 1/{max_retries}")
 
