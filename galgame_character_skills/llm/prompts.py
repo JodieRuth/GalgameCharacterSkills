@@ -1,6 +1,20 @@
 """Prompt 模板模块，集中构建 summarize、skills 与角色卡生成提示词。"""
 
-def _build_write_file_tool(content_description):
+from typing import Any, Callable
+
+
+def _build_write_file_tool(content_description: str) -> list[dict[str, Any]]:
+    """构造 write_file 工具定义。
+
+    Args:
+        content_description: 内容字段描述。
+
+    Returns:
+        list[dict[str, Any]]: 工具定义列表。
+
+    Raises:
+        Exception: 工具定义构造失败时向上抛出。
+    """
     return [
         {
             "type": "function",
@@ -27,15 +41,33 @@ def _build_write_file_tool(content_description):
 
 
 def build_summarize_content_payload(
-    content,
-    role_name,
-    instruction,
-    output_file_path,
-    output_language,
-    vndb_data,
-    lang_names,
-    format_vndb_section,
-):
+    content: str,
+    role_name: str,
+    instruction: str,
+    output_file_path: str,
+    output_language: str,
+    vndb_data: dict[str, Any] | None,
+    lang_names: dict[str, str],
+    format_vndb_section: Callable[[dict[str, Any] | None, str], str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """构造文本归纳请求载荷。
+
+    Args:
+        content: 待归纳文本。
+        role_name: 角色名。
+        instruction: 额外指令。
+        output_file_path: 输出文件路径。
+        output_language: 输出语言。
+        vndb_data: VNDB 数据。
+        lang_names: 语言名称映射。
+        format_vndb_section: VNDB 段落格式化函数。
+
+    Returns:
+        tuple[list[dict[str, Any]], list[dict[str, Any]]]: 消息列表和工具定义。
+
+    Raises:
+        Exception: 提示词构造失败时向上抛出。
+    """
     tools = _build_write_file_tool("File content in markdown format")
 
     system_prompt = f"""You are a professional character analysis assistant.
@@ -134,15 +166,33 @@ ALL output must be in {lang_name}, regardless of the source text language."""
 
 
 def build_summarize_chara_card_payload(
-    content,
-    role_name,
-    instruction,
-    output_file_path,
-    output_language,
-    vndb_data,
-    lang_names,
-    format_vndb_section,
-):
+    content: str,
+    role_name: str,
+    instruction: str,
+    output_file_path: str,
+    output_language: str,
+    vndb_data: dict[str, Any] | None,
+    lang_names: dict[str, str],
+    format_vndb_section: Callable[[dict[str, Any] | None, str], str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """构造角色卡归纳请求载荷。
+
+    Args:
+        content: 待归纳文本。
+        role_name: 角色名。
+        instruction: 额外指令。
+        output_file_path: 输出文件路径。
+        output_language: 输出语言。
+        vndb_data: VNDB 数据。
+        lang_names: 语言名称映射。
+        format_vndb_section: VNDB 段落格式化函数。
+
+    Returns:
+        tuple[list[dict[str, Any]], list[dict[str, Any]]]: 消息列表和工具定义。
+
+    Raises:
+        Exception: 提示词构造失败时向上抛出。
+    """
     tools = _build_write_file_tool("File content in JSON format")
 
     system_prompt = f"""You are a professional character analysis and lorebook extraction assistant.
@@ -321,14 +371,31 @@ Character names, location names, and other proper nouns can be translated or kep
 
 
 def build_generate_skills_folder_init_payload(
-    summaries,
-    role_name,
-    output_root_dir,
-    output_language,
-    vndb_data,
-    lang_names,
-    format_vndb_section,
-):
+    summaries: str,
+    role_name: str,
+    output_root_dir: str,
+    output_language: str,
+    vndb_data: dict[str, Any] | None,
+    lang_names: dict[str, str],
+    format_vndb_section: Callable[[dict[str, Any] | None, str], str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """构造技能包初始化请求载荷。
+
+    Args:
+        summaries: summary 聚合文本。
+        role_name: 角色名。
+        output_root_dir: 输出根目录。
+        output_language: 输出语言。
+        vndb_data: VNDB 数据。
+        lang_names: 语言名称映射。
+        format_vndb_section: VNDB 段落格式化函数。
+
+    Returns:
+        tuple[list[dict[str, Any]], list[dict[str, Any]]]: 消息列表和工具定义。
+
+    Raises:
+        Exception: 提示词构造失败时向上抛出。
+    """
     tools = [
         {
             "type": "function",
@@ -583,7 +650,22 @@ ALL output must be in {lang_name}, regardless of the source text language."""
     return messages, tools
 
 
-def build_compress_content_payload(group_files_content, group_info):
+def build_compress_content_payload(
+    group_files_content: dict[str, str],
+    group_info: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """构造压缩请求载荷。
+
+    Args:
+        group_files_content: 分组文件内容映射。
+        group_info: 分组信息。
+
+    Returns:
+        tuple[list[dict[str, Any]], list[dict[str, Any]]]: 消息列表和工具定义。
+
+    Raises:
+        Exception: 提示词构造失败时向上抛出。
+    """
     tools = [
         {
             "type": "function",

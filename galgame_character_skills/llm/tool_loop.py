@@ -1,20 +1,67 @@
 """角色卡 tool loop 模块，负责字段写入调用、状态保存与循环终止判断。"""
 
 import json
+from typing import Any, Callable
 
 from ..checkpoint import CheckpointManager
 
 
-def _checkpoint_fields_snapshot(fields_data):
+def _checkpoint_fields_snapshot(fields_data: dict[str, Any]) -> dict[str, Any]:
+    """生成可持久化的字段快照。
+
+    Args:
+        fields_data: 当前字段数据。
+
+    Returns:
+        dict[str, Any]: 过滤后的字段快照。
+
+    Raises:
+        Exception: 快照构造失败时向上抛出。
+    """
     return {k: v for k, v in fields_data.items() if k != "character_book_entries"}
 
 
-def _default_save_llm_state(checkpoint_id, **payload):
+def _default_save_llm_state(checkpoint_id: str, **payload: Any) -> None:
+    """使用默认 checkpoint 管理器保存 LLM 状态。
+
+    Args:
+        checkpoint_id: checkpoint 标识。
+        **payload: 状态数据。
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 状态保存失败时向上抛出。
+    """
     mgr = CheckpointManager()
     mgr.save_llm_state(checkpoint_id, **payload)
 
 
-def _save_checkpoint_state(checkpoint_id, messages, iteration_count, fields_data, save_llm_state_fn, last_response_marker=None):
+def _save_checkpoint_state(
+    checkpoint_id: str | None,
+    messages: list[Any],
+    iteration_count: int,
+    fields_data: dict[str, Any],
+    save_llm_state_fn: Callable[..., None],
+    last_response_marker: Any = None,
+) -> None:
+    """保存角色卡 tool loop 的 checkpoint 状态。
+
+    Args:
+        checkpoint_id: checkpoint 标识。
+        messages: 消息列表。
+        iteration_count: 当前迭代次数。
+        fields_data: 当前字段数据。
+        save_llm_state_fn: 状态保存函数。
+        last_response_marker: 最近一次响应标记。
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 状态保存失败时向上抛出。
+    """
     if not checkpoint_id:
         return
     payload = {
@@ -27,7 +74,19 @@ def _save_checkpoint_state(checkpoint_id, messages, iteration_count, fields_data
     save_llm_state_fn(checkpoint_id, **payload)
 
 
-def _apply_write_field_calls(tool_calls, fields_data):
+def _apply_write_field_calls(tool_calls: list[Any], fields_data: dict[str, Any]) -> bool:
+    """应用 write_field 工具调用结果。
+
+    Args:
+        tool_calls: 工具调用列表。
+        fields_data: 当前字段数据。
+
+    Returns:
+        bool: 是否应强制结束循环。
+
+    Raises:
+        Exception: 工具参数解析异常未被内部拦截时向上抛出。
+    """
     should_force_complete = False
     for tool_call in tool_calls:
         if tool_call.function.name != "write_field":
@@ -49,7 +108,19 @@ def _apply_write_field_calls(tool_calls, fields_data):
     return should_force_complete
 
 
-def _append_tool_messages(messages, assistant_message):
+def _append_tool_messages(messages: list[dict[str, Any]], assistant_message: Any) -> None:
+    """将工具交互消息追加到会话列表。
+
+    Args:
+        messages: 消息列表。
+        assistant_message: 助手消息对象。
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 消息构造失败时向上抛出。
+    """
     messages.append(
         {
             "role": "assistant",
@@ -76,16 +147,35 @@ def _append_tool_messages(messages, assistant_message):
 
 
 def run_character_card_tool_loop(
-    send_message,
-    tool_gateway,
-    tools,
-    messages,
-    fields_data,
-    checkpoint_id,
-    initial_tool_call_count=0,
-    max_tool_calls=50,
-    save_llm_state_fn=None,
-):
+    send_message: Callable[..., Any],
+    tool_gateway: Any,
+    tools: list[dict[str, Any]],
+    messages: list[dict[str, Any]],
+    fields_data: dict[str, Any],
+    checkpoint_id: str | None,
+    initial_tool_call_count: int = 0,
+    max_tool_calls: int = 50,
+    save_llm_state_fn: Callable[..., None] | None = None,
+) -> dict[str, Any]:
+    """执行角色卡字段写入 tool loop。
+
+    Args:
+        send_message: 模型发送函数。
+        tool_gateway: 工具网关。
+        tools: 工具定义列表。
+        messages: 消息列表。
+        fields_data: 当前字段数据。
+        checkpoint_id: checkpoint 标识。
+        initial_tool_call_count: 初始工具调用次数。
+        max_tool_calls: 最大工具调用次数。
+        save_llm_state_fn: 状态保存函数。
+
+    Returns:
+        dict[str, Any]: tool loop 执行结果。
+
+    Raises:
+        Exception: 模型调用或状态保存失败时向上抛出。
+    """
     tool_call_count = initial_tool_call_count
     save_fn = save_llm_state_fn or _default_save_llm_state
 
