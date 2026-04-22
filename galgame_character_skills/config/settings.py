@@ -16,6 +16,17 @@ class AppSettings:
 
 
 def _parse_dotenv_file(dotenv_path: str) -> dict[str, str]:
+    """解析 dotenv 文件。
+
+    Args:
+        dotenv_path: dotenv 文件路径。
+
+    Returns:
+        dict[str, str]: 解析得到的键值对。
+
+    Raises:
+        Exception: 文件读取异常未被内部拦截时向上抛出。
+    """
     values: dict[str, str] = {}
     if not os.path.exists(dotenv_path):
         return values
@@ -41,6 +52,19 @@ def _parse_dotenv_file(dotenv_path: str) -> dict[str, str]:
 
 
 def _read_config_value(dotenv_values: dict[str, str], env_key: str, default: str = "") -> str:
+    """按优先级读取配置值。
+
+    Args:
+        dotenv_values: dotenv 键值对。
+        env_key: 环境变量名。
+        default: 默认值。
+
+    Returns:
+        str: 读取到的配置值。
+
+    Raises:
+        Exception: 配置读取失败时向上抛出。
+    """
     if env_key in os.environ:
         return os.environ.get(env_key, "").strip()
     if env_key in dotenv_values:
@@ -49,6 +73,17 @@ def _read_config_value(dotenv_values: dict[str, str], env_key: str, default: str
 
 
 def _parse_positive_int(value: str) -> int | None:
+    """解析正整数配置值。
+
+    Args:
+        value: 原始字符串值。
+
+    Returns:
+        int | None: 解析后的正整数。
+
+    Raises:
+        Exception: 数值解析失败时向上抛出。
+    """
     if value is None:
         return None
     raw = str(value).strip()
@@ -62,6 +97,17 @@ def _parse_positive_int(value: str) -> int | None:
 
 
 def get_base_dir() -> str:
+    """获取应用根目录。
+
+    Args:
+        None
+
+    Returns:
+        str: 应用根目录路径。
+
+    Raises:
+        Exception: 路径解析失败时向上抛出。
+    """
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -70,6 +116,17 @@ def get_base_dir() -> str:
 
 @lru_cache(maxsize=1)
 def get_app_settings() -> AppSettings:
+    """获取缓存化的应用配置。
+
+    Args:
+        None
+
+    Returns:
+        AppSettings: 应用配置对象。
+
+    Raises:
+        Exception: 配置加载失败时向上抛出。
+    """
     base_dir = get_base_dir()
     dotenv_path = os.path.join(base_dir, ".env")
     dotenv_values = _parse_dotenv_file(dotenv_path)
@@ -89,7 +146,18 @@ def get_app_settings() -> AppSettings:
     )
 
 
-def reset_app_settings_cache():
+def reset_app_settings_cache() -> None:
+    """清空应用配置缓存。
+
+    Args:
+        None
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 缓存清理失败时向上抛出。
+    """
     get_app_settings.cache_clear()
 
 
