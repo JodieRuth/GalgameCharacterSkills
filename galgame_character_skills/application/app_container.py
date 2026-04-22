@@ -16,6 +16,12 @@ from ..gateways.storage_gateway import DefaultStorageGateway, StorageGateway
 from ..gateways.checkpoint_gateway import DefaultCheckpointGateway, CheckpointGateway
 from ..gateways.vndb_gateway import DefaultVndbGateway, VndbGateway
 from ..gateways.executor_gateway import DefaultExecutorGateway, ExecutorGateway
+from ..workspace import (
+    get_workspace_summaries_dir,
+    get_workspace_skills_dir,
+    get_workspace_cards_dir,
+    get_workspace_checkpoints_dir,
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +40,10 @@ class TaskRuntimeDependencies:
     executor_gateway: ExecutorGateway
     clean_vndb_data: Callable[[Any], Any]
     get_base_dir: Callable[[], str]
+    get_workspace_summaries_dir: Callable[[], str]
+    get_workspace_skills_dir: Callable[[], str]
+    get_workspace_cards_dir: Callable[[], str]
+    get_workspace_checkpoints_dir: Callable[[], str]
     estimate_tokens: Callable[[str], int]
     llm_gateway: LLMGateway
     tool_gateway: ToolGateway
@@ -88,6 +98,10 @@ def build_task_runtime(deps: AppDependencies) -> TaskRuntimeDependencies:
         executor_gateway=DefaultExecutorGateway(),
         clean_vndb_data=clean_vndb_data,
         get_base_dir=get_base_dir,
+        get_workspace_summaries_dir=get_workspace_summaries_dir,
+        get_workspace_skills_dir=get_workspace_skills_dir,
+        get_workspace_cards_dir=get_workspace_cards_dir,
+        get_workspace_checkpoints_dir=get_workspace_checkpoints_dir,
         estimate_tokens=estimate_tokens_from_text,
         llm_gateway=DefaultLLMGateway(),
         tool_gateway=DefaultToolGateway(),
@@ -106,4 +120,8 @@ __all__ = [
     "estimate_tokens_from_text",
     "download_vndb_image",
     "embed_json_in_png",
+    "get_workspace_summaries_dir",
+    "get_workspace_skills_dir",
+    "get_workspace_cards_dir",
+    "get_workspace_checkpoints_dir",
 ]

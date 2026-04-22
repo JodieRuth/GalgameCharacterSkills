@@ -49,6 +49,10 @@ def test_build_task_runtime_wires_default_gateways():
     assert runtime.checkpoint_gateway.manager is deps.ckpt_manager
     assert runtime.clean_vndb_data is app_container.clean_vndb_data
     assert runtime.get_base_dir is app_container.get_base_dir
+    assert runtime.get_workspace_summaries_dir is app_container.get_workspace_summaries_dir
+    assert runtime.get_workspace_skills_dir is app_container.get_workspace_skills_dir
+    assert runtime.get_workspace_cards_dir is app_container.get_workspace_cards_dir
+    assert runtime.get_workspace_checkpoints_dir is app_container.get_workspace_checkpoints_dir
     assert runtime.estimate_tokens is app_container.estimate_tokens_from_text
     assert runtime.download_vndb_image is app_container.download_vndb_image
     assert runtime.embed_json_in_png is app_container.embed_json_in_png
