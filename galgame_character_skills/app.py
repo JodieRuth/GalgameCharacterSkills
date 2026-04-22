@@ -32,14 +32,6 @@ from .config import get_app_settings
 from .workspace import get_workspace_summaries_dir
 
 
-def _build_task_handlers(runtime):
-    return {
-        "summarize": lambda payload: summarize_result(data=payload, runtime=runtime),
-        "generate_skills_folder": lambda payload: generate_skills_folder_result(data=payload, runtime=runtime),
-        "generate_character_card": lambda payload: generate_character_card_result(data=payload, runtime=runtime),
-    }
-
-
 def _register_root_route(app):
     @app.route("/")
     def index():
@@ -83,7 +75,7 @@ def _register_summary_routes(app, adapter):
         return adapter.run_with_body(get_context_limit_result, get_model_context_limit)
 
 
-def _register_task_routes(app, runtime, adapter, task_handlers):
+def _register_task_routes(app, runtime, adapter):
     @app.route("/api/summarize", methods=["POST"])
     def summarize():
         return adapter.run_with_body(summarize_result, runtime)
@@ -92,12 +84,12 @@ def _register_task_routes(app, runtime, adapter, task_handlers):
     def generate_skills():
         return adapter.run_with_body(
             generate_skills_result,
-            generate_skills_folder_handler=task_handlers["generate_skills_folder"],
-            generate_character_card_handler=task_handlers["generate_character_card"],
+            generate_skills_folder_handler=lambda payload: generate_skills_folder_result(data=payload, runtime=runtime),
+            generate_character_card_handler=lambda payload: generate_character_card_result(data=payload, runtime=runtime),
         )
 
 
-def _register_checkpoint_routes(app, runtime, adapter, task_handlers):
+def _register_checkpoint_routes(app, runtime, adapter):
     @app.route("/api/checkpoints", methods=["GET"])
     def list_checkpoints():
         task_type = request.args.get("task_type")
@@ -123,9 +115,9 @@ def _register_checkpoint_routes(app, runtime, adapter, task_handlers):
             resume_checkpoint_with_payload_result,
             checkpoint_id,
             runtime.checkpoint_gateway,
-            task_handlers["summarize"],
-            task_handlers["generate_skills_folder"],
-            task_handlers["generate_character_card"],
+            lambda payload: summarize_result(data=payload, runtime=runtime),
+            lambda payload: generate_skills_folder_result(data=payload, runtime=runtime),
+            lambda payload: generate_character_card_result(data=payload, runtime=runtime),
         )
 
 
@@ -149,13 +141,12 @@ def create_app(app_dependencies=None, task_runtime=None):
     deps = app_dependencies or build_app_dependencies()
     runtime = task_runtime or build_task_runtime(deps)
     adapter = JsonApiAdapter()
-    task_handlers = _build_task_handlers(runtime)
 
     _register_root_route(app)
     _register_file_routes(app, deps, adapter)
     _register_summary_routes(app, adapter)
-    _register_task_routes(app, runtime, adapter, task_handlers)
-    _register_checkpoint_routes(app, runtime, adapter, task_handlers)
+    _register_task_routes(app, runtime, adapter)
+    _register_checkpoint_routes(app, runtime, adapter)
     _register_vndb_route(app, deps, runtime, adapter)
 
     return app
