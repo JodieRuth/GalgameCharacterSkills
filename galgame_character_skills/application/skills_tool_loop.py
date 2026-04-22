@@ -7,6 +7,8 @@ from .app_container import TaskRuntimeDependencies
 from .tool_loop_runner import ToolLoopRunState, run_checkpointed_tool_loop
 from .task_result_factory import fail_task_result
 from ..domain import GenerateSkillsRequest
+from ..llm.message_flows import build_skills_init_messages
+from ..llm.shared import LANG_NAMES, format_vndb_section
 
 
 def initialize_skill_generation(
@@ -32,19 +34,23 @@ def initialize_skill_generation(
         Exception: 初始化提示词或工具失败时向上抛出。
     """
     if not resume_checkpoint_id:
-        messages, tools = llm_interaction.generate_skills_folder_init(
-            summaries_text,
-            request_data.role_name,
-            request_data.output_language,
-            request_data.vndb_data,
+        messages, tools = build_skills_init_messages(
+            lang_names=LANG_NAMES,
+            format_vndb_section=format_vndb_section,
+            summaries=summaries_text,
+            role_name=request_data.role_name,
+            output_language=request_data.output_language,
+            vndb_data=request_data.vndb_data,
             output_root_dir=output_root_dir,
         )
     else:
-        _, tools = llm_interaction.generate_skills_folder_init(
-            summaries_text,
-            request_data.role_name,
-            request_data.output_language,
-            request_data.vndb_data,
+        _, tools = build_skills_init_messages(
+            lang_names=LANG_NAMES,
+            format_vndb_section=format_vndb_section,
+            summaries=summaries_text,
+            role_name=request_data.role_name,
+            output_language=request_data.output_language,
+            vndb_data=request_data.vndb_data,
             output_root_dir=output_root_dir,
         )
         messages = None

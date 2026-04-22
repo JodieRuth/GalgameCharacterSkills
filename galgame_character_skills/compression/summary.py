@@ -12,6 +12,7 @@ from .common import (
     cleanup_temp_workspace,
     create_temp_workspace,
 )
+from ..llm.message_flows import build_compression_messages
 
 
 def compress_summary_files_with_llm(
@@ -103,7 +104,7 @@ def compress_summary_files_with_llm(
         print(f"Processing group {group_idx + 1}/{num_groups}: {len(group_files)} files, ~{group_tokens} tokens")
 
         group_info = build_group_info(group_idx, num_groups, len(group_files))
-        messages, tools = llm_client.compress_content_with_llm(group_files_content, group_info)
+        messages, tools = build_compression_messages(group_files_content, group_info)
 
         try:
             max_iterations = 50

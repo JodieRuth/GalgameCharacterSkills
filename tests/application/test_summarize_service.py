@@ -21,11 +21,8 @@ class _FakeLLMClient:
         self.content = content
         self.tool_calls = tool_calls
 
-    def summarize_content(self, *args, **kwargs):
+    def send_message(self, messages, tools=None, max_retries=None, use_counter=True):
         return _FakeResponse(content=self.content, tool_calls=self.tool_calls)
-
-    def summarize_content_for_chara_card(self, *args, **kwargs):
-        return _FakeResponse(content='{"character_analysis": {}, "lorebook_entries": []}')
 
 
 def test_run_summarize_task_requires_role_name():

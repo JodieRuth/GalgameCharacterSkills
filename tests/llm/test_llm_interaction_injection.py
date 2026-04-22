@@ -1,5 +1,4 @@
 from galgame_character_skills.llm.llm_interaction import LLMInteraction
-from galgame_character_skills.llm import llm_interaction as llm_interaction_module
 
 
 class _FakeRuntime:
@@ -74,86 +73,15 @@ def test_build_runtime_delegates_to_runtime_class():
     finally:
         LLMInteraction._runtime_cls = original_runtime_cls
 
-
-def test_generate_character_card_with_tools_delegates_to_flow(monkeypatch):
-    captured = {}
-    client = LLMInteraction(tool_gateway="gateway", transport=_FakeTransport(), runtime=_FakeRuntime())
-
-    def fake_generate_character_card(**kwargs):
-        captured.update(kwargs)
-        return {"success": True}
-
-    monkeypatch.setattr(llm_interaction_module, "generate_character_card", fake_generate_character_card)
-
-    result = client.generate_character_card_with_tools(
-        role_name="Alice",
-        all_analyses=[{"a": 1}],
-        all_lorebook_entries=[{"entry": 1}],
-        output_path="out.json",
-        creator="me",
-        vndb_data={"name": "Alice"},
-        output_language="zh",
-        checkpoint_id="ckpt-1",
-        ckpt_messages=[{"role": "assistant", "content": "x"}],
-        ckpt_fields_data={"name": "Alice"},
-        ckpt_iteration_count=3,
-        save_llm_state_fn="save-fn",
-    )
-
-    assert result == {"success": True}
-    assert captured["tool_gateway"] == "gateway"
-    assert captured["lang_names"] == {"zh": "中文", "en": "English", "ja": "日本語"}
-    assert callable(captured["format_vndb_section"])
-    assert captured["role_name"] == "Alice"
-    assert captured["output_path"] == "out.json"
-
-
-def test_summarize_content_delegates_to_message_flow(monkeypatch):
-    captured = {}
+def test_get_tool_response_returns_tool_calls():
     client = LLMInteraction(transport=_FakeTransport(), runtime=_FakeRuntime())
+    tool_calls = [{"id": "call-1"}]
+    response = type(
+        "Response",
+        (),
+        {"choices": [type("Choice", (), {"message": type("Message", (), {"tool_calls": tool_calls})()})()]},
+    )()
 
-    def fake_send_summarize_content(**kwargs):
-        captured.update(kwargs)
-        return {"ok": True}
+    result = client.get_tool_response(response)
 
-    monkeypatch.setattr(llm_interaction_module, "send_summarize_content", fake_send_summarize_content)
-
-    result = client.summarize_content(
-        content="story",
-        role_name="Alice",
-        instruction="strict",
-        output_file_path="out.md",
-        output_language="zh",
-        vndb_data={"name": "Alice"},
-    )
-
-    assert result == {"ok": True}
-    assert captured["content"] == "story"
-    assert captured["role_name"] == "Alice"
-    assert callable(captured["send_message"])
-    assert captured["lang_names"]["zh"] == "中文"
-
-
-def test_generate_skills_folder_init_delegates_to_message_flow(monkeypatch):
-    captured = {}
-    client = LLMInteraction(transport=_FakeTransport(), runtime=_FakeRuntime())
-
-    def fake_build_skills_init_messages(**kwargs):
-        captured.update(kwargs)
-        return [{"role": "system", "content": "x"}], [{"type": "function"}]
-
-    monkeypatch.setattr(llm_interaction_module, "build_skills_init_messages", fake_build_skills_init_messages)
-
-    messages, tools = client.generate_skills_folder_init(
-        summaries="summary",
-        role_name="Alice",
-        output_language="ja",
-        vndb_data={"name": "Alice"},
-        output_root_dir="D:/skills",
-    )
-
-    assert messages == [{"role": "system", "content": "x"}]
-    assert tools == [{"type": "function"}]
-    assert captured["summaries"] == "summary"
-    assert captured["output_root_dir"] == "D:/skills"
-    assert callable(captured["format_vndb_section"])
+    assert result == tool_calls

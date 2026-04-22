@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from galgame_character_skills.application import skills_context
 from galgame_character_skills.application import skills_finalize
 from galgame_character_skills.application import skills_service
+from galgame_character_skills.application import skills_tool_loop
 
 
 def test_generate_skills_task_resume_checkpoint_failure_passthrough(monkeypatch):
@@ -44,10 +45,6 @@ def test_generate_skills_task_reads_summaries_from_workspace(monkeypatch):
     captured = {}
 
     class FakeLLMClient:
-        def generate_skills_folder_init(self, summaries, role_name, output_language, vndb_data, output_root_dir=""):
-            captured["output_root_dir"] = output_root_dir
-            return [{"role": "system", "content": "ok"}], []
-
         def send_message(self, messages, tools, use_counter=False):
             return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="done", tool_calls=[]))])
 
@@ -71,6 +68,14 @@ def test_generate_skills_task_reads_summaries_from_workspace(monkeypatch):
     )
 
     monkeypatch.setattr(skills_service, "find_role_summary_markdown_files", lambda base, role: [f"{base}/a.md"])
+    monkeypatch.setattr(
+        skills_tool_loop,
+        "build_skills_init_messages",
+        lambda **kwargs: (
+            captured.__setitem__("output_root_dir", kwargs["output_root_dir"]) or [{"role": "system", "content": "ok"}],
+            [],
+        ),
+    )
     monkeypatch.setattr(skills_context, "build_full_skill_generation_context", lambda files: "summary")
     monkeypatch.setattr(skills_finalize, "append_vndb_info_to_skill_md", lambda *args, **kwargs: None)
     monkeypatch.setattr(skills_finalize, "create_code_skill_copy", lambda *args, **kwargs: None)

@@ -9,6 +9,8 @@ from typing import Any, Callable
 from .app_container import TaskRuntimeDependencies
 from .runtime_logging import log_message
 from .summarize_checkpoint import persist_slice_checkpoint_if_needed
+from ..llm.message_flows import send_summarize_content, send_summarize_chara_card_content
+from ..llm.shared import LANG_NAMES, format_vndb_section
 
 
 @dataclass(frozen=True)
@@ -299,22 +301,28 @@ def process_single_slice(
     time.sleep(0.5 * slice_index)
 
     if mode == "chara_card":
-        response = llm_client.summarize_content_for_chara_card(
-            task.slice_content,
-            task.role_name,
-            task.instruction,
-            output_file_path,
-            task.output_language,
-            task.vndb_data,
+        response = send_summarize_chara_card_content(
+            send_message=llm_client.send_message,
+            lang_names=LANG_NAMES,
+            format_vndb_section=format_vndb_section,
+            content=task.slice_content,
+            role_name=task.role_name,
+            instruction=task.instruction,
+            output_file_path=output_file_path,
+            output_language=task.output_language,
+            vndb_data=task.vndb_data,
         )
     else:
-        response = llm_client.summarize_content(
-            task.slice_content,
-            task.role_name,
-            task.instruction,
-            output_file_path,
-            task.output_language,
-            task.vndb_data,
+        response = send_summarize_content(
+            send_message=llm_client.send_message,
+            lang_names=LANG_NAMES,
+            format_vndb_section=format_vndb_section,
+            content=task.slice_content,
+            role_name=task.role_name,
+            instruction=task.instruction,
+            output_file_path=output_file_path,
+            output_language=task.output_language,
+            vndb_data=task.vndb_data,
         )
 
     result = SliceExecutionResult(index=slice_index, output_path=output_file_path)

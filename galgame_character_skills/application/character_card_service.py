@@ -21,6 +21,8 @@ from .task_prepare_context import (
     prepare_task_context,
 )
 from ..config.request_config import build_llm_config
+from ..llm.character_card_flow import generate_character_card
+from ..llm.shared import LANG_NAMES, format_vndb_section
 from ..domain import GenerateCharacterCardRequest, fail_result, TASK_TYPE_GENERATE_CHARA_CARD
 
 
@@ -164,14 +166,18 @@ def run_generate_character_card_task(
     )
 
     llm_interaction = runtime.llm_gateway.create_client(config)
-    raw_result = llm_interaction.generate_character_card_with_tools(
-        request_data.role_name,
-        all_character_analyses,
-        all_lorebook_entries,
-        paths.json_output_path,
-        request_data.creator,
-        request_data.vndb_data,
-        request_data.output_language,
+    raw_result = generate_character_card(
+        send_message=llm_interaction.send_message,
+        tool_gateway=llm_interaction.tool_gateway,
+        lang_names=LANG_NAMES,
+        format_vndb_section=format_vndb_section,
+        role_name=request_data.role_name,
+        all_analyses=all_character_analyses,
+        all_lorebook_entries=all_lorebook_entries,
+        output_path=paths.json_output_path,
+        creator=request_data.creator,
+        vndb_data=request_data.vndb_data,
+        output_language=request_data.output_language,
         checkpoint_id=checkpoint_id,
         ckpt_messages=prepared.messages if request_data.resume_checkpoint_id else None,
         ckpt_fields_data=prepared.fields_data if request_data.resume_checkpoint_id else None,
