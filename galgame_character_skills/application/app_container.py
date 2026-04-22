@@ -9,7 +9,7 @@ from ..files import FileProcessor
 from ..character_card import download_vndb_image, embed_json_in_png
 from ..utils.path_utils import get_base_dir
 from ..utils.token_utils import estimate_tokens_from_text
-from ..utils.vndb_utils import load_r18_traits, clean_vndb_data
+from ..vndb import load_r18_traits, clean_vndb_data
 from ..gateways.llm_gateway import DefaultLLMGateway, LLMGateway
 from ..gateways.tool_gateway import DefaultToolGateway, ToolGateway
 from ..gateways.storage_gateway import DefaultStorageGateway, StorageGateway

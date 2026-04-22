@@ -4,7 +4,6 @@ from .app_runtime import open_browser, configure_werkzeug_logging
 from .input_normalization import extract_file_paths
 from .path_utils import get_base_dir, get_resource_path
 from .token_utils import estimate_tokens_from_text
-from .vndb_utils import load_r18_traits, clean_vndb_data
 
 
 def __getattr__(name: str):
@@ -24,6 +23,4 @@ __all__ = [
     "get_base_dir",
     "get_resource_path",
     "estimate_tokens_from_text",
-    "load_r18_traits",
-    "clean_vndb_data",
 ]
