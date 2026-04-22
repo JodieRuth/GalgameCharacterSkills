@@ -1,8 +1,12 @@
 from types import SimpleNamespace
 
-from galgame_character_skills.api.checkpoint_api import CheckpointApi
+from galgame_character_skills.api.checkpoint_api import CheckpointApi, build_resume_task_handlers
 from galgame_character_skills.application import resume_dispatcher as dispatcher_module
-from galgame_character_skills.domain import TASK_TYPE_SUMMARIZE, TASK_TYPE_GENERATE_SKILLS
+from galgame_character_skills.domain import (
+    TASK_TYPE_SUMMARIZE,
+    TASK_TYPE_GENERATE_SKILLS,
+    TASK_TYPE_GENERATE_CHARA_CARD,
+)
 
 
 class DummyCheckpointGateway:
@@ -63,7 +67,7 @@ def test_checkpoint_api_resume_checkpoint(monkeypatch):
         "load_resumable_checkpoint",
         lambda _gw, _cid: {"success": True, "checkpoint": {"task_type": TASK_TYPE_GENERATE_SKILLS, "input_params": {"role_name": "a"}}},
     )
-    monkeypatch.setattr(api._resume_dispatcher, "_generate_skills_handler", lambda data: {"success": True, "kind": "skills", "data": data})
+    api._resume_dispatcher._handlers[TASK_TYPE_GENERATE_SKILLS] = lambda data: {"success": True, "kind": "skills", "data": data}
 
     result = api.resume_checkpoint("c9", {"model_name": "m1"})
 
@@ -85,3 +89,19 @@ def test_checkpoint_api_resume_checkpoint_unknown_task(monkeypatch):
     result = api.resume_checkpoint("cx", {})
 
     assert result["success"] is False
+
+
+def test_checkpoint_api_build_resume_task_handlers():
+    task_api = SimpleNamespace(
+        summarize=lambda data: {"kind": "summarize", "data": data},
+        generate_skills_folder=lambda data: {"kind": "skills", "data": data},
+        generate_character_card=lambda data: {"kind": "card", "data": data},
+    )
+
+    result = build_resume_task_handlers(task_api)
+
+    assert set(result) == {
+        TASK_TYPE_SUMMARIZE,
+        TASK_TYPE_GENERATE_SKILLS,
+        TASK_TYPE_GENERATE_CHARA_CARD,
+    }

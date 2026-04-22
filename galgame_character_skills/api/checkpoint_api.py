@@ -2,10 +2,25 @@
 
 from typing import Any
 
-from ..application.resume_dispatcher import ResumeTaskDispatcher
+from ..application.resume_dispatcher import ResumeTaskDispatcher, ResumeTaskHandler
 from ..application.app_container import TaskRuntimeDependencies
-from ..domain import ok_result, fail_result
+from ..domain import (
+    ok_result,
+    fail_result,
+    TASK_TYPE_SUMMARIZE,
+    TASK_TYPE_GENERATE_SKILLS,
+    TASK_TYPE_GENERATE_CHARA_CARD,
+)
 from .task_api import TaskApi
+
+
+def build_resume_task_handlers(task_api: TaskApi) -> dict[str, ResumeTaskHandler]:
+    """构造 checkpoint 恢复任务处理器映射。"""
+    return {
+        TASK_TYPE_SUMMARIZE: task_api.summarize,
+        TASK_TYPE_GENERATE_SKILLS: task_api.generate_skills_folder,
+        TASK_TYPE_GENERATE_CHARA_CARD: task_api.generate_character_card,
+    }
 
 
 class CheckpointApi:
@@ -29,11 +44,7 @@ class CheckpointApi:
         """
         self.runtime = runtime
         task_api = TaskApi(runtime)
-        self._resume_dispatcher = ResumeTaskDispatcher(
-            summarize_handler=task_api.summarize,
-            generate_skills_handler=task_api.generate_skills_folder,
-            generate_character_card_handler=task_api.generate_character_card,
-        )
+        self._resume_dispatcher = ResumeTaskDispatcher(build_resume_task_handlers(task_api))
 
     def list_checkpoints(
         self,
@@ -115,4 +126,4 @@ class CheckpointApi:
         )
 
 
-__all__ = ["CheckpointApi"]
+__all__ = ["CheckpointApi", "build_resume_task_handlers"]

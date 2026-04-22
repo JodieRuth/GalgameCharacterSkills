@@ -3,12 +3,9 @@
 from typing import Any, Callable
 
 from ..checkpoint import load_resumable_checkpoint
-from ..domain import (
-    fail_result,
-    TASK_TYPE_SUMMARIZE,
-    TASK_TYPE_GENERATE_SKILLS,
-    TASK_TYPE_GENERATE_CHARA_CARD,
-)
+from ..domain import fail_result
+
+ResumeTaskHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 class ResumeTaskDispatcher:
@@ -20,16 +17,12 @@ class ResumeTaskDispatcher:
 
     def __init__(
         self,
-        summarize_handler: Callable[[dict[str, Any]], dict[str, Any]],
-        generate_skills_handler: Callable[[dict[str, Any]], dict[str, Any]],
-        generate_character_card_handler: Callable[[dict[str, Any]], dict[str, Any]],
+        handlers: dict[str, ResumeTaskHandler],
     ) -> None:
         """初始化恢复任务分发器。
 
         Args:
-            summarize_handler: summarize 任务处理函数。
-            generate_skills_handler: 技能包任务处理函数。
-            generate_character_card_handler: 角色卡任务处理函数。
+            handlers: 任务类型到恢复处理函数的映射。
 
         Returns:
             None
@@ -37,9 +30,7 @@ class ResumeTaskDispatcher:
         Raises:
             Exception: 分发器初始化失败时向上抛出。
         """
-        self._summarize_handler = summarize_handler
-        self._generate_skills_handler = generate_skills_handler
-        self._generate_character_card_handler = generate_character_card_handler
+        self._handlers = dict(handlers)
 
     def resume(
         self,
@@ -70,13 +61,10 @@ class ResumeTaskDispatcher:
         input_params["resume_checkpoint_id"] = checkpoint_id
         input_params.update(extra_params or {})
 
-        if task_type == TASK_TYPE_SUMMARIZE:
-            return self._summarize_handler(input_params)
-        if task_type == TASK_TYPE_GENERATE_SKILLS:
-            return self._generate_skills_handler(input_params)
-        if task_type == TASK_TYPE_GENERATE_CHARA_CARD:
-            return self._generate_character_card_handler(input_params)
+        handler = self._handlers.get(task_type)
+        if handler is not None:
+            return handler(input_params)
         return fail_result(f"未知的任务类型: {task_type}")
 
 
-__all__ = ["ResumeTaskDispatcher"]
+__all__ = ["ResumeTaskDispatcher", "ResumeTaskHandler"]
