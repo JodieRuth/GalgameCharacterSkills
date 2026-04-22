@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
 from galgame_character_skills.application.summarize import checkpoint as summarize_checkpoint
+from galgame_character_skills.application.summarize import slice_worker as summarize_slice_worker
 from galgame_character_skills.application.summarize import service as summarize_service
-from galgame_character_skills.application.summarize import slice_executor as summarize_slice_executor
 from galgame_character_skills.domain import TASK_TYPE_SUMMARIZE, TASK_TYPE_GENERATE_SKILLS
 
 
@@ -80,7 +80,7 @@ def test_process_single_slice_restores_from_checkpoint_markdown():
         def write_text(self, path, content):
             self.content = content
 
-    result = summarize_slice_executor.process_single_slice(
+    result = summarize_slice_worker.process_single_slice(
         args=(0, "slice", "A", "", "out.md", {}, "", "skills", None, "ckpt-1"),
         checkpoint_gateway=FakeCheckpointGateway(),
         llm_gateway=SimpleNamespace(create_client=lambda config, request_runtime=None: _FakeLLMClient()),
@@ -94,7 +94,7 @@ def test_process_single_slice_restores_from_checkpoint_markdown():
 
 
 def test_process_single_slice_normal_mode_success(monkeypatch):
-    monkeypatch.setattr(summarize_slice_executor.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(summarize_slice_worker.time, "sleep", lambda *_: None)
 
     class FakeCheckpointGateway:
         def get_slice_result(self, checkpoint_id, slice_index):
@@ -124,7 +124,7 @@ def test_process_single_slice_normal_mode_success(monkeypatch):
 
     storage = FakeStorageGateway()
 
-    result = summarize_slice_executor.process_single_slice(
+    result = summarize_slice_worker.process_single_slice(
         args=(1, "slice", "A", "", "out.md", {}, "", "skills", None, "ckpt-2"),
         checkpoint_gateway=ckpt,
         llm_gateway=llm_gateway,
@@ -140,7 +140,7 @@ def test_process_single_slice_normal_mode_success(monkeypatch):
 
 
 def test_process_single_slice_normal_mode_empty_content_fails(monkeypatch):
-    monkeypatch.setattr(summarize_slice_executor.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(summarize_slice_worker.time, "sleep", lambda *_: None)
 
     class FakeCheckpointGateway:
         def get_slice_result(self, checkpoint_id, slice_index):
@@ -168,7 +168,7 @@ def test_process_single_slice_normal_mode_empty_content_fails(monkeypatch):
     storage = FakeStorageGateway()
     llm_gateway = SimpleNamespace(create_client=lambda config, request_runtime=None: _FakeLLMClient(content="   "))
 
-    result = summarize_slice_executor.process_single_slice(
+    result = summarize_slice_worker.process_single_slice(
         args=(2, "slice", "A", "", "out.md", {}, "", "skills", None, "ckpt-3"),
         checkpoint_gateway=FakeCheckpointGateway(),
         llm_gateway=llm_gateway,

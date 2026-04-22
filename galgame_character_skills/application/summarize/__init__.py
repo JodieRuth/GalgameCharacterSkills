@@ -6,16 +6,20 @@ from .checkpoint import (
     persist_slice_checkpoint_if_needed,
     sanitize_resume_progress,
 )
-from .service import run_summarize_task
-from .slice_executor import (
+from .executor import execute_slice_tasks
+from .models import (
     SliceExecutionResult,
     SliceTask,
     SummarizeExecutionAggregate,
-    execute_slice_tasks,
+    to_slice_task,
+)
+from .service import run_summarize_task
+from .slice_finalize import (
     extract_write_file_content,
     finalize_skills_slice_result,
+)
+from .slice_worker import (
     process_single_slice,
-    to_slice_task,
 )
 
 __all__ = [

@@ -16,10 +16,10 @@ from ..shared.task_prepare_context import (
 from .checkpoint import (
     build_summarize_resumed_handler,
 )
-from .slice_executor import (
+from .executor import execute_slice_tasks
+from .models import (
     SliceTask,
     SummarizeExecutionAggregate,
-    execute_slice_tasks,
 )
 from ...config.request_config import build_llm_config
 from ...utils.input_normalization import extract_file_paths
