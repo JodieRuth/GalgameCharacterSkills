@@ -21,9 +21,9 @@ from ..shared.task_prepare_context import (
     prepare_task_context,
 )
 from ...config.request_config import build_llm_config
-from ...llm.character_card_flow import generate_character_card
 from ...llm.shared import LANG_NAMES, format_vndb_section
 from ...domain import GenerateCharacterCardRequest, fail_result, TASK_TYPE_GENERATE_CHARA_CARD
+from .flow import generate_character_card
 
 
 @dataclass(frozen=True)

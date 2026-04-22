@@ -1,6 +1,6 @@
 import types
 
-from galgame_character_skills.llm import tool_loop
+from galgame_character_skills.application.character_card import tool_loop
 
 
 def _tool_call(name, arguments, call_id="tc-1"):
@@ -18,7 +18,7 @@ def _response_with_content(content):
     return types.SimpleNamespace(choices=[types.SimpleNamespace(message=message)])
 
 
-def test_run_character_card_tool_loop_success(monkeypatch):
+def test_run_character_card_tool_loop_success():
     saves = []
 
     fields = {"name": "Alice", "description": "", "character_book_entries": [{"id": 1}]}
