@@ -9,12 +9,7 @@ from .checkpoint_service import (
     resume_checkpoint_result,
     resume_checkpoint_with_payload_result,
 )
-from .task_api_service import (
-    summarize_result,
-    generate_skills_result,
-    generate_skills_folder_result,
-    generate_character_card_result,
-)
+from .task_api import TaskApi
 from .context_api_service import get_context_limit_result
 from .config_api_service import get_config_result
 from .vndb_api_service import get_vndb_info_result
@@ -32,10 +27,7 @@ __all__ = [
     "delete_checkpoint_result",
     "resume_checkpoint_result",
     "resume_checkpoint_with_payload_result",
-    "summarize_result",
-    "generate_skills_result",
-    "generate_skills_folder_result",
-    "generate_character_card_result",
+    "TaskApi",
     "get_context_limit_result",
     "get_config_result",
     "get_vndb_info_result",

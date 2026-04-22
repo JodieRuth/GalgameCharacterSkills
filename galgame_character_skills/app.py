@@ -8,12 +8,7 @@ from .api.summary_api_service import scan_summary_roles_result, get_summary_file
 from .api.context_api_service import get_context_limit_result
 from .api.config_api_service import get_config_result
 from .api.vndb_api_service import get_vndb_info_result
-from .api.task_api_service import (
-    summarize_result,
-    generate_skills_result,
-    generate_skills_folder_result,
-    generate_character_card_result,
-)
+from .api.task_api import TaskApi
 from .api.checkpoint_service import (
     list_checkpoints_result,
     get_checkpoint_result,
@@ -76,20 +71,20 @@ def _register_summary_routes(app, adapter):
 
 
 def _register_task_routes(app, runtime, adapter):
+    task_api = TaskApi(runtime)
+
     @app.route("/api/summarize", methods=["POST"])
     def summarize():
-        return adapter.run_with_body(summarize_result, runtime)
+        return adapter.run_with_body(task_api.summarize)
 
     @app.route("/api/skills", methods=["POST"])
     def generate_skills():
-        return adapter.run_with_body(
-            generate_skills_result,
-            generate_skills_folder_handler=lambda payload: generate_skills_folder_result(data=payload, runtime=runtime),
-            generate_character_card_handler=lambda payload: generate_character_card_result(data=payload, runtime=runtime),
-        )
+        return adapter.run_with_body(task_api.dispatch_skills_mode)
 
 
 def _register_checkpoint_routes(app, runtime, adapter):
+    task_api = TaskApi(runtime)
+
     @app.route("/api/checkpoints", methods=["GET"])
     def list_checkpoints():
         task_type = request.args.get("task_type")
@@ -115,9 +110,9 @@ def _register_checkpoint_routes(app, runtime, adapter):
             resume_checkpoint_with_payload_result,
             checkpoint_id,
             runtime.checkpoint_gateway,
-            lambda payload: summarize_result(data=payload, runtime=runtime),
-            lambda payload: generate_skills_folder_result(data=payload, runtime=runtime),
-            lambda payload: generate_character_card_result(data=payload, runtime=runtime),
+            task_api.summarize,
+            task_api.generate_skills_folder,
+            task_api.generate_character_card,
         )
 
 
