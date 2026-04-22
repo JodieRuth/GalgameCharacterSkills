@@ -1,237 +1,130 @@
-# GalgameCharacterSkills 架构文档
+# GalgameCharacterSkills 架构入口
 
-## 1. 项目目标
+## 1. 说明
 
-本项目是一个基于 Flask 的本地工具，核心能力包括：
+本文件不再承担“单文档描述整个系统”的职责。
 
-- 扫描与切片资源文本（`resource/`）
-- 使用 LLM 对文本进行角色归纳（`summarize`）
-- 基于归纳结果生成技能包（`generate_skills`）
-- 生成角色卡 JSON/PNG（`generate_chara_card`）
-- 提供断点持久化、失败恢复、任务列表管理
+原因是当前项目已经包含：
 
-入口运行方式：
+- 多条核心任务流程
+- checkpoint 横切子系统
+- 多层目录边界
+- 较多基础设施抽象
 
-- `main.py` 启动 Flask 并自动打开浏览器
-- Web UI 模板位于 `galgame_character_skills/web/index.html`
+继续把所有设计都堆在一个文件里，会很快出现两个问题：
 
+1. 内容难以维护，容易滞后于代码
+2. 不同层次的信息混在一起，阅读成本高
 
-## 2. 分层结构
+因此，从当前版本开始：
 
-当前代码以 `galgame_character_skills/` 作为库根目录，按职责分层：
+- `docs/architecture.md` 保留为兼容入口
+- 具体架构内容迁移到 `docs/` 下的分层文档树
 
-- `app.py`：HTTP 路由层（请求分发与 JSON 响应）
-- `api/`：接口编排层（参数读取、调用 application、返回结果组装）
-- `application/`：用例层（归纳/技能生成/角色卡生成核心流程）
-- `domain/`：领域对象（请求数据类、统一结果模型）
-- `utils/`：基础设施与实现细节（文件系统、checkpoint、LLM 交互、工具调用）
-- `web/`：前端模板与页面逻辑
 
-依赖方向约束：
+## 2. 推荐阅读入口
 
-- `app -> api -> application -> domain/utils`
-- `domain` 不依赖外部层
-- `utils` 不依赖 `api/app`
+如果你是第一次阅读项目架构，建议按以下顺序开始：
 
+1. [docs/README.md](/D:/AI/GalgameCharacterSkills/docs/README.md)
+2. [overview.md](/D:/AI/GalgameCharacterSkills/docs/architecture/overview.md)
+3. [dependency-rules.md](/D:/AI/GalgameCharacterSkills/docs/architecture/dependency-rules.md)
+4. [runtime-composition.md](/D:/AI/GalgameCharacterSkills/docs/architecture/runtime-composition.md)
+5. [request-lifecycle.md](/D:/AI/GalgameCharacterSkills/docs/architecture/request-lifecycle.md)
 
-## 3. 目录与核心文件
 
-### 3.1 路由入口
+## 3. 文档结构
 
-- `galgame_character_skills/app.py`
-  - 注册所有 API 路由
-  - 创建 `deps` 与 `task_runtime`
-  - 使用 `_run_json/_run_json_with_body` 统一响应包装
+当前架构文档按“总览 + 分层 + 专题 + 参考”组织：
 
-### 3.2 API 层
+```text
+docs/
+  README.md
+  architecture/
+  routes/
+  api/
+  application/
+  checkpoint/
+  gateways/
+  llm/
+  files/
+  workspace/
+  domain/
+  decisions/
+  reference/
+```
 
-- `galgame_character_skills/api/file_api_service.py`
-- `galgame_character_skills/api/summary_api_service.py`
-- `galgame_character_skills/api/task_api_service.py`
-- `galgame_character_skills/api/checkpoint_service.py`
-- `galgame_character_skills/api/context_api_service.py`
-- `galgame_character_skills/api/vndb_api_service.py`
-- `galgame_character_skills/api/vndb_service.py`
 
-特点：
+## 4. 分层文档导航
 
-- 保持“薄编排”角色，不放业务算法
-- 统一使用 `ok_result/fail_result`
+### 4.1 架构总览
 
-### 3.3 Application 层
+- [overview.md](/D:/AI/GalgameCharacterSkills/docs/architecture/overview.md)
+- [dependency-rules.md](/D:/AI/GalgameCharacterSkills/docs/architecture/dependency-rules.md)
+- [runtime-composition.md](/D:/AI/GalgameCharacterSkills/docs/architecture/runtime-composition.md)
+- [request-lifecycle.md](/D:/AI/GalgameCharacterSkills/docs/architecture/request-lifecycle.md)
 
-- `galgame_character_skills/application/summarize_service.py`
-- `galgame_character_skills/application/skills_service.py`
-- `galgame_character_skills/application/character_card_service.py`
-- `galgame_character_skills/application/app_container.py`
-- `galgame_character_skills/application/llm_gateway.py`
-- `galgame_character_skills/application/tool_gateway.py`
+### 4.2 HTTP 入口与接口编排
 
-特点：
+- [routes/README.md](/D:/AI/GalgameCharacterSkills/docs/routes/README.md)
+- [api/README.md](/D:/AI/GalgameCharacterSkills/docs/api/README.md)
 
-- 用例流程完整闭环在此层实现
-- 通过 runtime 注入 LLM/Tool/路径与 IO 依赖
+### 4.3 核心业务流程
 
-### 3.4 Domain 层
+- [application/README.md](/D:/AI/GalgameCharacterSkills/docs/application/README.md)
+- [summarize.md](/D:/AI/GalgameCharacterSkills/docs/application/summarize.md)
+- [skills.md](/D:/AI/GalgameCharacterSkills/docs/application/skills.md)
+- [character-card.md](/D:/AI/GalgameCharacterSkills/docs/application/character-card.md)
 
-- `galgame_character_skills/domain/task_requests.py`
-  - `SummarizeRequest`
-  - `GenerateSkillsRequest`
-  - `GenerateCharacterCardRequest`
-- `galgame_character_skills/domain/service_result.py`
-  - `ServiceResult`
-  - `ok_result(...)`
-  - `fail_result(...)`
+### 4.4 横切子系统
 
-### 3.5 Utils 层（基础设施）
+- [checkpoint/README.md](/D:/AI/GalgameCharacterSkills/docs/checkpoint/README.md)
+- [gateways/README.md](/D:/AI/GalgameCharacterSkills/docs/gateways/README.md)
+- [llm/README.md](/D:/AI/GalgameCharacterSkills/docs/llm/README.md)
+- [workspace/README.md](/D:/AI/GalgameCharacterSkills/docs/workspace/README.md)
 
-- Checkpoint：
-  - `galgame_character_skills/utils/checkpoint_manager.py`
-  - `galgame_character_skills/utils/checkpoint_utils.py`
-- LLM 与工具：
-  - `galgame_character_skills/utils/llm_interaction.py`
-  - `galgame_character_skills/utils/llm_factory.py`
-  - `galgame_character_skills/utils/tool_handler.py`
-  - `galgame_character_skills/utils/tool_gateway.py`
-- 文本处理与后处理：
-  - `galgame_character_skills/utils/file_processor.py`
-  - `galgame_character_skills/utils/compression_service.py`
-  - `galgame_character_skills/utils/skills_context_builder.py`
-  - `galgame_character_skills/utils/skills_postprocess.py`
+### 4.5 稳定契约与参考
 
+- [domain/README.md](/D:/AI/GalgameCharacterSkills/docs/domain/README.md)
+- [api-contract.md](/D:/AI/GalgameCharacterSkills/docs/reference/api-contract.md)
+- [checkpoint-schema.md](/D:/AI/GalgameCharacterSkills/docs/reference/checkpoint-schema.md)
+- [glossary.md](/D:/AI/GalgameCharacterSkills/docs/reference/glossary.md)
 
-## 4. 关键流程
+### 4.6 架构决策记录
 
-### 4.1 summarize（归纳）
+- [0001-layered-architecture.md](/D:/AI/GalgameCharacterSkills/docs/decisions/0001-layered-architecture.md)
+- [0002-checkpoint-based-resume.md](/D:/AI/GalgameCharacterSkills/docs/decisions/0002-checkpoint-based-resume.md)
+- [0003-task-api-dispatch.md](/D:/AI/GalgameCharacterSkills/docs/decisions/0003-task-api-dispatch.md)
+- [0004-move-character-card-flow-to-application.md](/D:/AI/GalgameCharacterSkills/docs/decisions/0004-move-character-card-flow-to-application.md)
 
-1. `POST /api/summarize`
-2. API 层调用 `run_summarize_task`
-3. 创建或恢复 checkpoint
-4. `FileProcessor` 切片
-5. 并发执行 `_process_single_slice`
-6. 每片成功后保存 slice 结果并原子更新进度
-7. 全成功则 `mark_completed`，部分失败则返回 `can_resume=true`
 
-### 4.2 generate_skills（生成技能包）
+## 5. 当前系统的最小摘要
 
-1. `POST /api/skills`（`mode=skills`）
-2. 读取角色 summary 文件
-3. 按上下文窗口决定是否压缩
-4. 进入 LLM tool-call 循环
-5. 写入 skill-main，追加 VNDB 信息，复制 skill-code
-6. 更新 checkpoint 状态
+如果只需要一句话概括当前架构，可以理解为：
 
-### 4.3 generate_chara_card（生成角色卡）
+`routes -> api -> application -> domain`
 
-1. `POST /api/skills`（`mode=chara_card`）
-2. 读取分析汇总 JSON
-3. 可选压缩 analyses
-4. LLM 逐字段写角色卡
-5. 产出 JSON；若有图片则尝试产出 PNG（嵌入 JSON）
-6. 更新 checkpoint 状态，失败可恢复
+并由以下支撑层协作：
 
+- `gateways`
+- `checkpoint`
+- `llm`
+- `files`
+- `workspace`
 
-## 5. 断点恢复机制
+其中：
 
-### 5.1 状态模型
+- `routes` 负责 HTTP 入口
+- `api` 负责接口编排
+- `application` 负责用例流程
+- `domain` 负责稳定契约
 
-Checkpoint 主要状态：
 
-- `running`
-- `failed`
-- `completed`
+## 6. 本文件后续维护策略
 
-恢复入口：
+后续原则如下：
 
-- `POST /api/checkpoints/<checkpoint_id>/resume`
-
-当前约束：
-
-- `running` 禁止恢复
-- `completed` 禁止恢复
-- 前端仅对 `failed` 显示“恢复”按钮
-
-### 5.2 持久化内容
-
-- `input_params`：任务输入
-- `progress`：阶段、总步数、完成/待处理列表
-- `intermediate_results`：切片输出路径、最终输出路径等
-- `llm_conversation_state`：messages、iteration、all_results、fields_data
-
-### 5.3 并发一致性
-
-`summarize` 并发切片完成时，使用 `mark_slice_completed(...)` 原子更新：
-
-- 将 `slice_index` 加入 `completed_items`
-- 从 `pending_items` 移除
-- 同步持久化
-
-
-## 6. API 概览
-
-主要接口：
-
-- `GET /api/files`
-- `POST /api/files/tokens`
-- `POST /api/slice`
-- `GET /api/summaries/roles`
-- `POST /api/summaries/files`
-- `POST /api/summarize`
-- `POST /api/skills`
-- `POST /api/context-limit`
-- `POST /api/vndb`
-- `GET /api/checkpoints`
-- `GET /api/checkpoints/<id>`
-- `DELETE /api/checkpoints/<id>`
-- `POST /api/checkpoints/<id>/resume`
-
-返回风格统一为：
-
-- 成功：`{"success": true, ...}`
-- 失败：`{"success": false, "message": "...", ...}`
-
-
-## 7. 运行时依赖注入
-
-`TaskRuntimeDependencies`（`application/app_container.py`）统一注入：
-
-- `file_processor`
-- `ckpt_manager`
-- `clean_vndb_data`
-- `get_base_dir`
-- `estimate_tokens`
-- `llm_gateway`
-- `tool_gateway`
-- `download_vndb_image`
-- `embed_json_in_png`
-
-目的：
-
-- 业务流程与具体实现解耦
-- 为 mock 与测试铺路
-
-
-## 8. 资源与数据目录
-
-- 文本输入目录：`resource/`
-- checkpoint 目录：`checkpoints/`
-- 任务临时目录：`checkpoints/temp/<checkpoint_id>/`
-- 技能输出目录：`<role>-skill-main/`、`<role>-skill-code/`
-- 角色卡输出目录：`<role>-character-card/`
-
-
-## 9. 已知技术债
-
-- `LLMInteraction` 仍较重，内部流程与 checkpoint/模板处理耦合偏高
-- 自动化测试尚不完整，尤其是 checkpoint 恢复与并发边界
-- 任务类型继续扩展时，现有流程存在重复编排代码
-
-
-## 10. 文档清单（专题）
-
-可按专题拆分为以下文档：
-
-- `docs/checkpoint.md`：checkpoint 结构、状态机、恢复策略
-- `docs/llm-flow.md`：LLM 请求链路、tool call 循环、压缩策略
-- `docs/api-contract.md`：接口请求/响应字段约定
-- `docs/testing-plan.md`：分阶段测试计划与 mock 策略
+1. 本文件只维护导航和最小摘要。
+2. 具体实现细节不再回填到本文件。
+3. 新增架构内容时，优先写入对应目录下的专题文档。
+4. 如果目录结构变化，应优先更新本文件中的导航链接和 `docs/README.md`。
