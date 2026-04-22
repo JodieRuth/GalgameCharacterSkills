@@ -1,4 +1,4 @@
-"""角色卡任务流辅助模块，提供字段初始化、消息构建与结果封装。"""
+"""角色卡字段流辅助模块，提供字段初始化、消息构建与结果封装。"""
 
 import os
 from datetime import datetime
@@ -8,17 +8,7 @@ from .card_prompt_builders import build_character_card_user_prompt
 
 
 def build_write_field_tools() -> list[dict[str, Any]]:
-    """构造 write_field 工具定义。
-
-    Args:
-        None
-
-    Returns:
-        list[dict[str, Any]]: 工具定义列表。
-
-    Raises:
-        Exception: 工具定义构造失败时向上抛出。
-    """
+    """构造 write_field 工具定义。"""
     return [
         {
             "type": "function",
@@ -65,20 +55,7 @@ def build_initial_character_card_fields(
     vndb_data: dict[str, Any] | None,
     lorebook_entries: list[Any],
 ) -> dict[str, Any]:
-    """构造角色卡初始字段。
-
-    Args:
-        role_name: 角色名。
-        creator: 创作者名。
-        vndb_data: VNDB 数据。
-        lorebook_entries: lorebook 条目列表。
-
-    Returns:
-        dict[str, Any]: 初始字段映射。
-
-    Raises:
-        Exception: 字段构造失败时向上抛出。
-    """
+    """构造角色卡初始字段。"""
     base_name = role_name
     if vndb_data and vndb_data.get("name"):
         base_name = vndb_data["name"]
@@ -106,18 +83,7 @@ def apply_checkpoint_fields(
     fields_data: dict[str, Any],
     ckpt_fields_data: dict[str, Any] | None,
 ) -> None:
-    """将 checkpoint 字段回填到当前字段数据。
-
-    Args:
-        fields_data: 当前字段数据。
-        ckpt_fields_data: checkpoint 字段数据。
-
-    Returns:
-        None
-
-    Raises:
-        Exception: 字段回填失败时向上抛出。
-    """
+    """将 checkpoint 字段回填到当前字段数据。"""
     if not ckpt_fields_data:
         return
     for key in fields_data:
@@ -134,21 +100,7 @@ def build_character_card_messages(
     system_prompt: str,
     role_name: str,
 ) -> tuple[list[dict[str, Any]], int]:
-    """构造角色卡生成消息列表。
-
-    Args:
-        is_resuming: 是否为恢复执行。
-        ckpt_messages: checkpoint 消息列表。
-        ckpt_iteration_count: checkpoint 迭代次数。
-        system_prompt: 系统提示词。
-        role_name: 角色名。
-
-    Returns:
-        tuple[list[dict[str, Any]], int]: 消息列表和起始迭代次数。
-
-    Raises:
-        Exception: 消息构造失败时向上抛出。
-    """
+    """构造角色卡生成消息列表。"""
     if is_resuming:
         return ckpt_messages, ckpt_iteration_count or 0
     return [
@@ -158,32 +110,12 @@ def build_character_card_messages(
 
 
 def build_character_card_template_path() -> str:
-    """获取角色卡模板路径。
-
-    Args:
-        None
-
-    Returns:
-        str: 模板文件路径。
-
-    Raises:
-        Exception: 路径构造失败时向上抛出。
-    """
+    """获取角色卡模板路径。"""
     return os.path.join(os.path.dirname(os.path.dirname(__file__)), "utils", "chara_card_template.json")
 
 
 def build_character_card_field_mappings(fields_data: dict[str, Any]) -> dict[str, Any]:
-    """构造角色卡模板字段映射。
-
-    Args:
-        fields_data: 字段数据。
-
-    Returns:
-        dict[str, Any]: 模板字段映射。
-
-    Raises:
-        Exception: 字段映射构造失败时向上抛出。
-    """
+    """构造角色卡模板字段映射。"""
     return {
         "{{name}}": fields_data["name"],
         "{{description}}": fields_data["description"],
@@ -208,19 +140,7 @@ def build_character_card_success_result(
     fields_data: dict[str, Any],
     result: Any,
 ) -> dict[str, Any]:
-    """构造角色卡生成成功结果。
-
-    Args:
-        output_path: 输出路径。
-        fields_data: 字段数据。
-        result: 模板写入结果。
-
-    Returns:
-        dict[str, Any]: 成功结果字典。
-
-    Raises:
-        Exception: 结果构造失败时向上抛出。
-    """
+    """构造角色卡生成成功结果。"""
     return {
         "success": True,
         "output_path": output_path,

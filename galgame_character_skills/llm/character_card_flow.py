@@ -9,7 +9,7 @@ from .card_prompt_builders import (
     build_integrate_analyses_system_prompt,
     build_integrate_analyses_user_prompt,
 )
-from .task_flows import (
+from .character_card_fields import (
     build_write_field_tools,
     build_initial_character_card_fields,
     apply_checkpoint_fields,

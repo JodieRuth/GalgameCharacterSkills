@@ -1,10 +1,10 @@
 from datetime import datetime
 
-import galgame_character_skills.llm.task_flows as task_flows
+import galgame_character_skills.llm.character_card_fields as character_card_fields
 
 
 def test_build_write_field_tools_schema():
-    tools = task_flows.build_write_field_tools()
+    tools = character_card_fields.build_write_field_tools()
     assert len(tools) == 1
     function_def = tools[0]["function"]
     assert function_def["name"] == "write_field"
@@ -14,7 +14,7 @@ def test_build_write_field_tools_schema():
 
 
 def test_build_initial_character_card_fields_with_vndb_data():
-    fields = task_flows.build_initial_character_card_fields(
+    fields = character_card_fields.build_initial_character_card_fields(
         role_name="Alice",
         creator="",
         vndb_data={"name": "Alice VNDB", "vndb_id": "c123"},
@@ -39,14 +39,14 @@ def test_apply_checkpoint_fields_updates_non_lorebook_only():
         "description": "desc",
         "character_book_entries": [{"id": 9}],
     }
-    task_flows.apply_checkpoint_fields(fields, ckpt)
+    character_card_fields.apply_checkpoint_fields(fields, ckpt)
     assert fields["name"] == "Alice2"
     assert fields["description"] == "desc"
     assert fields["character_book_entries"] == [{"id": 1}]
 
 
 def test_build_character_card_messages_resuming():
-    messages, iteration = task_flows.build_character_card_messages(
+    messages, iteration = character_card_fields.build_character_card_messages(
         is_resuming=True,
         ckpt_messages=[{"role": "assistant", "content": "x"}],
         ckpt_iteration_count=4,
@@ -58,8 +58,8 @@ def test_build_character_card_messages_resuming():
 
 
 def test_build_character_card_messages_non_resuming(monkeypatch):
-    monkeypatch.setattr(task_flows, "build_character_card_user_prompt", lambda role: f"user:{role}")
-    messages, iteration = task_flows.build_character_card_messages(
+    monkeypatch.setattr(character_card_fields, "build_character_card_user_prompt", lambda role: f"user:{role}")
+    messages, iteration = character_card_fields.build_character_card_messages(
         is_resuming=False,
         ckpt_messages=[],
         ckpt_iteration_count=None,
@@ -72,7 +72,7 @@ def test_build_character_card_messages_non_resuming(monkeypatch):
 
 
 def test_build_character_card_template_path():
-    path = task_flows.build_character_card_template_path()
+    path = character_card_fields.build_character_card_template_path()
     assert path.endswith("utils\\chara_card_template.json") or path.endswith("utils/chara_card_template.json")
 
 
@@ -94,7 +94,7 @@ def test_build_character_card_field_mappings():
         "depth_prompt": "",
         "character_book_entries": [{"id": 1}],
     }
-    mappings = task_flows.build_character_card_field_mappings(fields)
+    mappings = character_card_fields.build_character_card_field_mappings(fields)
     assert mappings["{{name}}"] == "Alice"
     assert mappings["{{character_book_entries}}"] == [{"id": 1}]
 
@@ -117,7 +117,7 @@ def test_build_character_card_success_result():
         "depth_prompt": "",
         "character_book_entries": [{"id": 1}],
     }
-    result = task_flows.build_character_card_success_result("out.json", fields, "ok")
+    result = character_card_fields.build_character_card_success_result("out.json", fields, "ok")
     assert result["success"] is True
     assert result["output_path"] == "out.json"
     assert result["result"] == "ok"
