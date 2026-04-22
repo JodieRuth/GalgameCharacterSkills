@@ -47,6 +47,7 @@ def test_build_task_runtime_wires_default_gateways():
 
     assert runtime.file_processor is deps.file_processor
     assert runtime.checkpoint_gateway.manager is deps.ckpt_manager
+    assert runtime.log is print
     assert runtime.clean_vndb_data is app_container.clean_vndb_data
     assert runtime.get_base_dir is app_container.get_base_dir
     assert runtime.get_workspace_summaries_dir is app_container.get_workspace_summaries_dir

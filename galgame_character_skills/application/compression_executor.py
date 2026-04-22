@@ -3,6 +3,7 @@
 from typing import Any, Callable
 
 from .app_container import TaskRuntimeDependencies
+from .runtime_logging import log_message
 
 
 def run_compression_pipeline(
@@ -40,10 +41,11 @@ def run_compression_pipeline(
     context_limit_tokens = policy["context_limit_tokens"]
     target_budget_tokens = context_limit_tokens
 
-    print(f"Model: {model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}")
-    print(
+    log_message(f"Model: {model_name}, Context limit: {context_limit}, Threshold: {context_limit_tokens}", runtime=runtime)
+    log_message(
         f"{log_prefix}Compression mode: {compression_mode}, Force no compression: {force_no_compression}, "
-        f"Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}"
+        f"Raw tokens: {raw_estimated_tokens}, Limit: {context_limit_tokens}",
+        runtime=runtime,
     )
 
     if policy["should_compress"]:
@@ -54,9 +56,9 @@ def run_compression_pipeline(
         return compressed, True, context_limit, context_limit_tokens
 
     if policy["force_exceeds_limit"]:
-        print("Force no compression enabled, using full context despite exceeding limit")
+        log_message("Force no compression enabled, using full context despite exceeding limit", runtime=runtime)
     else:
-        print(f"No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})")
+        log_message(f"No compression needed ({raw_estimated_tokens} <= {context_limit_tokens})", runtime=runtime)
     return None, False, context_limit, context_limit_tokens
 
 

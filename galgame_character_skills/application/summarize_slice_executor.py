@@ -4,9 +4,10 @@ import json
 import time
 from concurrent.futures import as_completed
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from .app_container import TaskRuntimeDependencies
+from .runtime_logging import log_message
 from .summarize_checkpoint import persist_slice_checkpoint_if_needed
 
 
@@ -238,6 +239,7 @@ def process_single_slice(
     llm_gateway: Any,
     tool_gateway: Any,
     storage_gateway: Any,
+    logger: Callable[[str], None] | None = None,
 ) -> SliceExecutionResult:
     """执行单个切片归纳。
 
@@ -247,6 +249,7 @@ def process_single_slice(
         llm_gateway: LLM 网关。
         tool_gateway: 工具网关。
         storage_gateway: 存储网关。
+        logger: 日志函数。
 
     Returns:
         SliceExecutionResult: 切片执行结果。
@@ -264,7 +267,7 @@ def process_single_slice(
     if checkpoint_id:
         existing = checkpoint_gateway.get_slice_result(checkpoint_id, slice_index)
         if existing:
-            print(f"Slice {slice_index} already completed, skipping")
+            log_message(f"Slice {slice_index} already completed, skipping", logger=logger)
             result = SliceExecutionResult(
                 index=slice_index,
                 success=True,
@@ -364,6 +367,7 @@ def process_single_slice(
             result=result,
             checkpoint_gateway=checkpoint_gateway,
             storage_gateway=storage_gateway,
+            logger=logger,
         )
 
     return result
@@ -398,6 +402,7 @@ def execute_slice_tasks(
                 runtime.llm_gateway,
                 runtime.tool_gateway,
                 runtime.storage_gateway,
+                runtime.log,
             ): task
             for task in tasks
         }

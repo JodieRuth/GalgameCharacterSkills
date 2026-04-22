@@ -1,5 +1,6 @@
 """应用依赖装配模块，负责构建全局依赖与任务运行时依赖。"""
 
+import builtins
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -38,6 +39,7 @@ class TaskRuntimeDependencies:
     storage_gateway: StorageGateway
     vndb_gateway: VndbGateway
     executor_gateway: ExecutorGateway
+    log: Callable[[str], None]
     clean_vndb_data: Callable[[Any], Any]
     get_base_dir: Callable[[], str]
     get_workspace_summaries_dir: Callable[[], str]
@@ -96,6 +98,7 @@ def build_task_runtime(deps: AppDependencies) -> TaskRuntimeDependencies:
         storage_gateway=DefaultStorageGateway(),
         vndb_gateway=DefaultVndbGateway(),
         executor_gateway=DefaultExecutorGateway(),
+        log=builtins.print,
         clean_vndb_data=clean_vndb_data,
         get_base_dir=get_base_dir,
         get_workspace_summaries_dir=get_workspace_summaries_dir,

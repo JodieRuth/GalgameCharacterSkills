@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .app_container import TaskRuntimeDependencies
+from .runtime_logging import log_message
 from .task_result_factory import ok_task_result
 from ..domain import GenerateCharacterCardRequest
 
@@ -65,9 +66,9 @@ def prepare_output_paths(
         ckpt_temp_dir = runtime.checkpoint_gateway.get_temp_dir(checkpoint_id)
         image_path = os.path.join(ckpt_temp_dir, f"{request_data.role_name}_vndb{image_ext}")
         if runtime.storage_gateway.exists(image_path):
-            print(f"VNDB image already exists: {image_path}")
+            log_message(f"VNDB image already exists: {image_path}", runtime=runtime)
         elif runtime.download_vndb_image(request_data.vndb_data_raw["image_url"], image_path):
-            print(f"Downloaded VNDB image to: {image_path}")
+            log_message(f"Downloaded VNDB image to: {image_path}", runtime=runtime)
         else:
             image_path = None
 
@@ -148,7 +149,7 @@ def embed_json_to_png(
 
     if image_path.lower().endswith(".png"):
         if runtime.embed_json_in_png(chara_card_json, image_path, png_output_path):
-            print(f"Created PNG character card: {png_output_path}")
+            log_message(f"Created PNG character card: {png_output_path}", runtime=runtime)
         else:
             png_output_path = None
             conversion_error = "Failed to embed JSON in PNG"
@@ -170,10 +171,10 @@ def embed_json_to_png(
 
         temp_png = os.path.join(runtime.checkpoint_gateway.get_temp_dir(checkpoint_id), f"{request_data.role_name}_temp.png")
         img.save(temp_png, "PNG", optimize=True)
-        print(f"Converted image to PNG: {temp_png}")
+        log_message(f"Converted image to PNG: {temp_png}", runtime=runtime)
 
         if runtime.embed_json_in_png(chara_card_json, temp_png, png_output_path):
-            print(f"Created PNG character card with embedded JSON: {png_output_path}")
+            log_message(f"Created PNG character card with embedded JSON: {png_output_path}", runtime=runtime)
         else:
             png_output_path = None
             conversion_error = "Failed to embed JSON in converted PNG"
@@ -182,11 +183,11 @@ def embed_json_to_png(
             runtime.storage_gateway.remove_file(temp_png)
     except ImportError:
         conversion_error = "PIL (Pillow) not installed. Run: pip install Pillow"
-        print(conversion_error)
+        log_message(conversion_error, runtime=runtime)
         png_output_path = None
     except Exception as exc:
         conversion_error = f"Image conversion failed: {str(exc)}"
-        print(conversion_error)
+        log_message(conversion_error, runtime=runtime)
         png_output_path = None
 
     return png_output_path, conversion_error
@@ -213,10 +214,10 @@ def cleanup_downloaded_image(
     if image_path and runtime.storage_gateway.exists(image_path) and not request_data.resume_checkpoint_id:
         try:
             runtime.storage_gateway.remove_file(image_path)
-            print(f"Cleaned up VNDB image: {image_path}")
+            log_message(f"Cleaned up VNDB image: {image_path}", runtime=runtime)
             return None
         except Exception as exc:
-            print(f"Failed to clean up VNDB image: {exc}")
+            log_message(f"Failed to clean up VNDB image: {exc}", runtime=runtime)
     return image_path
 
 

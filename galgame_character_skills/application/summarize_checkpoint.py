@@ -4,6 +4,7 @@ import json
 from typing import Any, Callable
 
 from .app_container import TaskRuntimeDependencies
+from .runtime_logging import log_message
 from .task_prepare_context import chain_on_resumed
 from ..domain import TASK_TYPE_SUMMARIZE
 
@@ -57,6 +58,7 @@ def persist_slice_checkpoint_if_needed(
     result: Any,
     checkpoint_gateway: Any,
     storage_gateway: Any,
+    logger: Callable[[str], None] | None = None,
 ) -> None:
     """按需持久化切片 checkpoint。
 
@@ -69,6 +71,7 @@ def persist_slice_checkpoint_if_needed(
         result: 切片执行结果对象。
         checkpoint_gateway: checkpoint 网关。
         storage_gateway: 存储网关。
+        logger: 日志函数。
 
     Returns:
         None
@@ -90,7 +93,7 @@ def persist_slice_checkpoint_if_needed(
         checkpoint_gateway.save_slice_result(checkpoint_id, slice_index, ckpt_content, "completed")
         checkpoint_gateway.mark_slice_completed(checkpoint_id, slice_index)
     except Exception as exc:
-        print(f"Failed to save slice {slice_index} result: {exc}")
+        log_message(f"Failed to save slice {slice_index} result: {exc}", logger=logger)
 
 
 def sanitize_resume_progress(

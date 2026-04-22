@@ -6,6 +6,7 @@ from typing import Any
 from .app_container import TaskRuntimeDependencies
 from .compression_policy import resolve_compression_policy
 from .compression_executor import run_compression_pipeline
+from .runtime_logging import log_message
 from ..compression import compress_analyses_with_llm
 from ..domain import GenerateCharacterCardRequest, fail_result
 from ..files import find_role_analysis_summary_file
@@ -79,7 +80,7 @@ def compress_character_analyses(
     )
 
     def _llm_compress(target_budget_tokens: int) -> list[dict[str, Any]]:
-        print("Using LLM compression for analyses")
+        log_message("Using LLM compression for analyses", runtime=runtime)
         llm_interaction = runtime.llm_gateway.create_client(config)
         return compress_analyses_with_llm(
             analyses=all_character_analyses,
@@ -91,7 +92,7 @@ def compress_character_analyses(
         )
 
     def _fallback_compress(target_budget_tokens: int) -> list[dict[str, Any]]:
-        print("Using original compression")
+        log_message("Using original compression", runtime=runtime)
         target_count = max(1, len(all_character_analyses) * target_budget_tokens // raw_estimated_tokens)
         return all_character_analyses[:target_count]
 
@@ -110,7 +111,11 @@ def compress_character_analyses(
         all_character_analyses = compressed
         compressed_text = json.dumps(all_character_analyses, ensure_ascii=False)
         compressed_tokens = runtime.estimate_tokens(compressed_text)
-        print(f"Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens ({compressed_tokens/raw_estimated_tokens*100:.1f}%)")
+        log_message(
+            f"Compressed: {raw_estimated_tokens} -> {compressed_tokens} tokens "
+            f"({compressed_tokens/raw_estimated_tokens*100:.1f}%)",
+            runtime=runtime,
+        )
 
     return all_character_analyses
 

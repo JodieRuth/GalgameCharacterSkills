@@ -19,11 +19,12 @@ def test_chain_on_resumed_calls_handlers_in_order():
     assert calls == ["h1", "h2"]
 
 
-def test_build_on_resumed_logger_prints_message(capsys):
+def test_build_on_resumed_logger_uses_runtime_logger():
+    messages = []
     logger = prepare_module.build_on_resumed_logger(lambda *_: "resume-log")
-    logger(object(), object(), object())
-    out = capsys.readouterr().out
-    assert "resume-log" in out
+    runtime = SimpleNamespace(log=messages.append)
+    logger(object(), object(), runtime)
+    assert messages == ["resume-log"]
 
 
 def test_build_clean_payload_loader_uses_runtime_cleaner():

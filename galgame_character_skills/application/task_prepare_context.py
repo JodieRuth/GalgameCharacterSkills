@@ -4,6 +4,7 @@ from typing import Any, Callable, TypeVar
 
 from .app_container import TaskRuntimeDependencies
 from .checkpoint_prepare import prepare_request_with_checkpoint
+from .runtime_logging import log_message
 
 RequestT = TypeVar("RequestT")
 PreparedT = TypeVar("PreparedT")
@@ -46,7 +47,7 @@ def build_on_resumed_logger(
         Exception: 日志消息构造失败时向上抛出。
     """
     def logger(request_data: Any, checkpoint_data: Any, runtime: TaskRuntimeDependencies) -> None:
-        print(message_builder(request_data, checkpoint_data, runtime))
+        log_message(message_builder(request_data, checkpoint_data, runtime), runtime=runtime)
 
     return logger
 

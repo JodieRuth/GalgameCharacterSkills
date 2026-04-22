@@ -6,6 +6,7 @@ from typing import Any
 from .app_container import TaskRuntimeDependencies
 from .compression_policy import resolve_compression_policy
 from .compression_executor import run_compression_pipeline
+from .runtime_logging import log_message
 from ..compression import compress_summary_files_with_llm
 from ..domain import GenerateSkillsRequest, fail_result
 from ..skills import (
@@ -73,7 +74,7 @@ def build_skill_context(
     summaries_text = raw_full_text
 
     def _llm_compress(target_budget_tokens: int) -> str:
-        print("Using LLM compression")
+        log_message("Using LLM compression", runtime=runtime)
         llm_interaction = runtime.llm_gateway.create_client(config)
         return compress_summary_files_with_llm(
             summary_files=summary_files,
@@ -85,7 +86,7 @@ def build_skill_context(
         )
 
     def _fallback_compress(target_budget_tokens: int) -> str:
-        print("Using original compression")
+        log_message("Using original compression", runtime=runtime)
         target_budget_chars = target_budget_tokens * 2
         return build_prioritized_skill_generation_context(
             summary_files,
@@ -121,12 +122,13 @@ def build_skill_context(
         "llm_compressed": "llm_deduplication",
     }.get(context_mode, "unknown")
 
-    print(
+    log_message(
         f"role={request_data.role_name} files={len(summary_files)} mode={context_mode} "
         f"raw_chars={raw_total_chars} raw_estimated_tokens={raw_estimated_tokens} "
         f"final_chars={compressed_chars} final_estimated_tokens={estimated_tokens} "
         f"compression_ratio={compression_ratio:.2%} "
-        f"strategy={strategy_name}"
+        f"strategy={strategy_name}",
+        runtime=runtime,
     )
 
     return SkillsContextData(
