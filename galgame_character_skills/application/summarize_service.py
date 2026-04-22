@@ -18,7 +18,7 @@ from .task_prepare_context import (
     chain_on_resumed,
     prepare_task_context,
 )
-from ..utils.request_config import build_llm_config
+from ..config.request_config import build_llm_config
 from ..utils.input_normalization import extract_file_paths
 from ..domain import SummarizeRequest, fail_result
 from ..workspace import get_workspace_summaries_dir

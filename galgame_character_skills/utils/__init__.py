@@ -5,7 +5,6 @@ from .tool_handler import ToolHandler
 from .compression_service import compress_summary_files_with_llm, compress_analyses_with_llm
 from .input_normalization import extract_file_paths
 from .path_utils import get_base_dir, get_resource_path
-from .request_config import build_llm_config
 from .token_utils import estimate_tokens_from_text
 from .vndb_utils import load_r18_traits, clean_vndb_data
 
@@ -29,7 +28,6 @@ __all__ = [
     "extract_file_paths",
     "get_base_dir",
     "get_resource_path",
-    "build_llm_config",
     "estimate_tokens_from_text",
     "load_r18_traits",
     "clean_vndb_data",

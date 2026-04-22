@@ -1,6 +1,6 @@
 from galgame_character_skills.config import AppSettings
-from galgame_character_skills.utils.request_config import build_llm_config
-import galgame_character_skills.utils.request_config as request_config
+from galgame_character_skills.config.request_config import build_llm_config
+import galgame_character_skills.config.request_config as request_config
 
 
 def test_build_llm_config_maps_fields_and_keeps_defaults(monkeypatch):

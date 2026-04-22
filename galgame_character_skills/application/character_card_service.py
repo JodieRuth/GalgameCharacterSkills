@@ -19,7 +19,7 @@ from .task_prepare_context import (
     prepare_task_context,
 )
 from ..files import find_role_analysis_summary_file
-from ..utils.request_config import build_llm_config
+from ..config.request_config import build_llm_config
 from ..utils.compression_service import compress_analyses_with_llm
 from ..domain import GenerateCharacterCardRequest, fail_result
 from ..workspace import get_workspace_cards_dir, get_workspace_summaries_dir

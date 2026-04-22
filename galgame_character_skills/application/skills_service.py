@@ -20,7 +20,7 @@ from .task_prepare_context import (
     prepare_task_context,
 )
 from ..files import find_role_summary_markdown_files
-from ..utils.request_config import build_llm_config
+from ..config.request_config import build_llm_config
 from ..skills import (
     append_vndb_info_to_skill_md,
     create_code_skill_copy,
