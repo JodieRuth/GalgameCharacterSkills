@@ -15,7 +15,23 @@ class CheckpointManager:
     _instance = None
     _lock = threading.Lock()
 
-    def __new__(cls, checkpoint_dir=None, use_singleton=True):
+    def __new__(
+        cls,
+        checkpoint_dir: str | None = None,
+        use_singleton: bool = True,
+    ) -> "CheckpointManager":
+        """创建 checkpoint 管理器实例。
+
+        Args:
+            checkpoint_dir: checkpoint 存储目录。
+            use_singleton: 是否启用单例。
+
+        Returns:
+            CheckpointManager: 管理器实例。
+
+        Raises:
+            Exception: 实例创建失败时向上抛出。
+        """
         if not use_singleton:
             obj = super().__new__(cls)
             obj._initialized = False
@@ -30,7 +46,23 @@ class CheckpointManager:
                     cls._instance._init_dir = checkpoint_dir
         return cls._instance
 
-    def __init__(self, checkpoint_dir=None, use_singleton=True):
+    def __init__(
+        self,
+        checkpoint_dir: str | None = None,
+        use_singleton: bool = True,
+    ) -> None:
+        """初始化 checkpoint 管理器。
+
+        Args:
+            checkpoint_dir: checkpoint 存储目录。
+            use_singleton: 是否启用单例。
+
+        Returns:
+            None
+
+        Raises:
+            Exception: 初始化失败时向上抛出。
+        """
         if self._initialized:
             return
         if checkpoint_dir is None:
@@ -47,11 +79,39 @@ class CheckpointManager:
         self._initialized = True
 
     @classmethod
-    def create_test_instance(cls, checkpoint_dir):
+    def create_test_instance(cls, checkpoint_dir: str) -> "CheckpointManager":
+        """创建测试专用管理器实例。
+
+        Args:
+            checkpoint_dir: checkpoint 存储目录。
+
+        Returns:
+            CheckpointManager: 非单例管理器实例。
+
+        Raises:
+            Exception: 实例创建失败时向上抛出。
+        """
         return cls(checkpoint_dir=checkpoint_dir, use_singleton=False)
 
-    def create_checkpoint(self, task_type: str, input_params: dict,
-                          metadata: dict = None) -> str:
+    def create_checkpoint(
+        self,
+        task_type: str,
+        input_params: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        """创建新的 checkpoint。
+
+        Args:
+            task_type: 任务类型。
+            input_params: 输入参数。
+            metadata: 附加元数据。
+
+        Returns:
+            str: checkpoint 标识。
+
+        Raises:
+            Exception: checkpoint 创建失败时向上抛出。
+        """
         checkpoint_id = f"{task_type}_{uuid.uuid4().hex[:8]}"
         ckpt_dir = os.path.join(self.temp_dir, checkpoint_id)
         os.makedirs(ckpt_dir, exist_ok=True)
@@ -92,9 +152,31 @@ class CheckpointManager:
         return checkpoint_id
 
     def _get_checkpoint_path(self, checkpoint_id: str) -> str:
+        """获取 checkpoint 文件路径。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+
+        Returns:
+            str: checkpoint 文件路径。
+
+        Raises:
+            Exception: 路径构造失败时向上抛出。
+        """
         return os.path.join(self.checkpoint_dir, f"{checkpoint_id}.json")
 
-    def _save_checkpoint(self, checkpoint_id: str):
+    def _save_checkpoint(self, checkpoint_id: str) -> None:
+        """保存 checkpoint 数据到磁盘。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+
+        Returns:
+            None
+
+        Raises:
+            Exception: 文件写入异常未被内部拦截时向上抛出。
+        """
         with self._file_lock:
             data = self._active_checkpoints.get(checkpoint_id)
             if not data:
@@ -114,7 +196,18 @@ class CheckpointManager:
                     except Exception:
                         pass
 
-    def load_checkpoint(self, checkpoint_id: str) -> Optional[dict]:
+    def load_checkpoint(self, checkpoint_id: str) -> Optional[dict[str, Any]]:
+        """加载 checkpoint 数据。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+
+        Returns:
+            Optional[dict[str, Any]]: checkpoint 数据。
+
+        Raises:
+            Exception: 文件读取异常未被内部拦截时向上抛出。
+        """
         if checkpoint_id in self._active_checkpoints:
             return self._active_checkpoints[checkpoint_id]
 
@@ -131,13 +224,33 @@ class CheckpointManager:
             print(f"Failed to load {checkpoint_id}: {e}")
             return None
 
-    def update_progress(self, checkpoint_id: str,
-                        current_step: int = None,
-                        total_steps: int = None,
-                        current_phase: str = None,
-                        completed_items: list = None,
-                        failed_items: list = None,
-                        pending_items: list = None):
+    def update_progress(
+        self,
+        checkpoint_id: str,
+        current_step: int | None = None,
+        total_steps: int | None = None,
+        current_phase: str | None = None,
+        completed_items: list[Any] | None = None,
+        failed_items: list[Any] | None = None,
+        pending_items: list[Any] | None = None,
+    ) -> None:
+        """更新 checkpoint 进度。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+            current_step: 当前步骤。
+            total_steps: 总步骤数。
+            current_phase: 当前阶段。
+            completed_items: 已完成项。
+            failed_items: 失败项。
+            pending_items: 待处理项。
+
+        Returns:
+            None
+
+        Raises:
+            Exception: checkpoint 保存失败时向上抛出。
+        """
         data = self._active_checkpoints.get(checkpoint_id)
         if not data:
             return
@@ -156,8 +269,27 @@ class CheckpointManager:
             prog['pending_items'] = pending_items
         self._save_checkpoint(checkpoint_id)
 
-    def save_slice_result(self, checkpoint_id: str, slice_index: int,
-                          content: str, status: str = "completed"):
+    def save_slice_result(
+        self,
+        checkpoint_id: str,
+        slice_index: int,
+        content: str,
+        status: str = "completed",
+    ) -> str | None:
+        """保存切片结果文件。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+            slice_index: 切片索引。
+            content: 切片内容。
+            status: 切片状态。
+
+        Returns:
+            str | None: 切片临时文件路径。
+
+        Raises:
+            Exception: 切片写入异常未被内部拦截时向上抛出。
+        """
         data = self._active_checkpoints.get(checkpoint_id)
         if not data:
             return None
@@ -177,7 +309,19 @@ class CheckpointManager:
         self._save_checkpoint(checkpoint_id)
         return slice_file
 
-    def mark_slice_completed(self, checkpoint_id: str, slice_index: int):
+    def mark_slice_completed(self, checkpoint_id: str, slice_index: int) -> None:
+        """标记切片已完成。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+            slice_index: 切片索引。
+
+        Returns:
+            None
+
+        Raises:
+            Exception: checkpoint 保存失败时向上抛出。
+        """
         with self._file_lock:
             data = self._active_checkpoints.get(checkpoint_id)
             if not data:
@@ -191,6 +335,18 @@ class CheckpointManager:
             self._save_checkpoint(checkpoint_id)
 
     def get_slice_result(self, checkpoint_id: str, slice_index: int) -> Optional[str]:
+        """读取切片结果内容。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+            slice_index: 切片索引。
+
+        Returns:
+            Optional[str]: 切片内容。
+
+        Raises:
+            Exception: 文件读取异常未被内部拦截时向上抛出。
+        """
         data = self._active_checkpoints.get(checkpoint_id)
         if not data:
             return None
@@ -206,13 +362,35 @@ class CheckpointManager:
         except Exception:
             return None
 
-    def save_llm_state(self, checkpoint_id: str, messages: list,
-                       last_response: Any = None,
-                       iteration_count: int = None,
-                       tool_call_history: list = None,
-                       all_results: list = None,
-                       fields_data: dict = None,
-                       extra_data: dict = None):
+    def save_llm_state(
+        self,
+        checkpoint_id: str,
+        messages: list[Any],
+        last_response: Any = None,
+        iteration_count: int | None = None,
+        tool_call_history: list[Any] | None = None,
+        all_results: list[Any] | None = None,
+        fields_data: dict[str, Any] | None = None,
+        extra_data: dict[str, Any] | None = None,
+    ) -> None:
+        """保存 LLM 会话状态。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+            messages: 消息列表。
+            last_response: 最近一次模型响应。
+            iteration_count: 迭代次数。
+            tool_call_history: 工具调用历史。
+            all_results: 累积结果。
+            fields_data: 字段数据。
+            extra_data: 额外状态字段。
+
+        Returns:
+            None
+
+        Raises:
+            Exception: checkpoint 保存失败时向上抛出。
+        """
         data = self._active_checkpoints.get(checkpoint_id)
         if not data:
             return
@@ -232,13 +410,35 @@ class CheckpointManager:
             state.update(extra_data)
         self._save_checkpoint(checkpoint_id)
 
-    def load_llm_state(self, checkpoint_id: str) -> Optional[dict]:
+    def load_llm_state(self, checkpoint_id: str) -> Optional[dict[str, Any]]:
+        """加载 LLM 会话状态。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+
+        Returns:
+            Optional[dict[str, Any]]: LLM 会话状态。
+
+        Raises:
+            Exception: 状态读取失败时向上抛出。
+        """
         data = self._active_checkpoints.get(checkpoint_id)
         if not data:
             return None
         return data['llm_conversation_state']
 
-    def _serialize_llm_response(self, response) -> Optional[dict]:
+    def _serialize_llm_response(self, response: Any) -> Optional[dict[str, Any]]:
+        """序列化模型响应对象。
+
+        Args:
+            response: 模型响应对象。
+
+        Returns:
+            Optional[dict[str, Any]]: 可持久化的响应数据。
+
+        Raises:
+            Exception: 序列化异常未被内部拦截时向上抛出。
+        """
         if response is None:
             return None
         try:
@@ -276,8 +476,23 @@ class CheckpointManager:
             print(f"Failed to serialize LLM response: {e}")
             return None
 
-    def mark_completed(self, checkpoint_id: str,
-                       final_output_path: str = None):
+    def mark_completed(
+        self,
+        checkpoint_id: str,
+        final_output_path: str | None = None,
+    ) -> None:
+        """标记任务完成。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+            final_output_path: 最终输出路径。
+
+        Returns:
+            None
+
+        Raises:
+            Exception: checkpoint 保存失败时向上抛出。
+        """
         data = self._active_checkpoints.get(checkpoint_id)
         if not data:
             return
@@ -286,7 +501,19 @@ class CheckpointManager:
             data['intermediate_results']['final_output_path'] = final_output_path
         self._save_checkpoint(checkpoint_id)
 
-    def mark_failed(self, checkpoint_id: str, error_message: str):
+    def mark_failed(self, checkpoint_id: str, error_message: str) -> None:
+        """标记任务失败。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+            error_message: 错误消息。
+
+        Returns:
+            None
+
+        Raises:
+            Exception: checkpoint 保存失败时向上抛出。
+        """
         data = self._active_checkpoints.get(checkpoint_id)
         if not data:
             return
@@ -294,8 +521,23 @@ class CheckpointManager:
         data['progress']['error_message'] = error_message
         self._save_checkpoint(checkpoint_id)
 
-    def list_checkpoints(self, task_type: str = None,
-                         status: str = None) -> List[dict]:
+    def list_checkpoints(
+        self,
+        task_type: str | None = None,
+        status: str | None = None,
+    ) -> List[dict[str, Any]]:
+        """列出 checkpoint 概览。
+
+        Args:
+            task_type: 任务类型过滤条件。
+            status: 状态过滤条件。
+
+        Returns:
+            List[dict[str, Any]]: checkpoint 概览列表。
+
+        Raises:
+            Exception: 列表读取失败时向上抛出。
+        """
         checkpoints = []
         if not os.path.exists(self.checkpoint_dir):
             return checkpoints
@@ -325,6 +567,17 @@ class CheckpointManager:
         return sorted(checkpoints, key=lambda x: x['updated_at'], reverse=True)
 
     def delete_checkpoint(self, checkpoint_id: str) -> bool:
+        """删除 checkpoint 及其临时文件。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+
+        Returns:
+            bool: 是否删除成功。
+
+        Raises:
+            Exception: 删除异常未被内部拦截时向上抛出。
+        """
         path = self._get_checkpoint_path(checkpoint_id)
         temp_path = os.path.join(self.temp_dir, checkpoint_id)
         has_record = (
@@ -344,7 +597,18 @@ class CheckpointManager:
         self._active_checkpoints.pop(checkpoint_id, None)
         return True
 
-    def _cleanup_temp_files(self, checkpoint_id: str):
+    def _cleanup_temp_files(self, checkpoint_id: str) -> None:
+        """清理 checkpoint 临时目录。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+
+        Returns:
+            None
+
+        Raises:
+            Exception: 清理异常未被内部拦截时向上抛出。
+        """
         ckpt_dir = os.path.join(self.temp_dir, checkpoint_id)
         if os.path.exists(ckpt_dir):
             try:
@@ -353,6 +617,17 @@ class CheckpointManager:
                 pass
 
     def get_temp_dir(self, checkpoint_id: str) -> str:
+        """获取并确保存在临时目录。
+
+        Args:
+            checkpoint_id: checkpoint 标识。
+
+        Returns:
+            str: 临时目录路径。
+
+        Raises:
+            Exception: 目录创建失败时向上抛出。
+        """
         ckpt_dir = os.path.join(self.temp_dir, checkpoint_id)
         os.makedirs(ckpt_dir, exist_ok=True)
         return ckpt_dir
