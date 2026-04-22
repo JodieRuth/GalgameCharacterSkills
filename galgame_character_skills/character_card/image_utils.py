@@ -3,11 +3,24 @@
 import base64
 import json
 import zlib
+from typing import Any
 
 import requests
 
 
-def download_vndb_image(image_url, output_path):
+def download_vndb_image(image_url: str, output_path: str) -> bool:
+    """下载 VNDB 角色图片。
+
+    Args:
+        image_url: 图片 URL。
+        output_path: 输出文件路径。
+
+    Returns:
+        bool: 是否下载成功。
+
+    Raises:
+        Exception: 下载异常未被内部拦截时向上抛出。
+    """
     if not image_url:
         return False
     try:
@@ -21,7 +34,20 @@ def download_vndb_image(image_url, output_path):
     return False
 
 
-def embed_json_in_png(json_data, png_path, output_png_path):
+def embed_json_in_png(json_data: dict[str, Any], png_path: str, output_png_path: str) -> bool:
+    """将角色卡 JSON 以 tEXt chunk 形式嵌入 PNG。
+
+    Args:
+        json_data: 角色卡 JSON 数据。
+        png_path: 源 PNG 路径。
+        output_png_path: 输出 PNG 路径。
+
+    Returns:
+        bool: 是否嵌入成功。
+
+    Raises:
+        Exception: PNG 处理异常未被内部拦截时向上抛出。
+    """
     try:
         with open(png_path, 'rb') as f:
             png_data = f.read()
@@ -51,13 +77,13 @@ def embed_json_in_png(json_data, png_path, output_png_path):
             if pos + 8 > len(png_data):
                 break
 
-            length = int.from_bytes(png_data[pos:pos+4], 'big')
-            chunk_type = png_data[pos+4:pos+8]
+            length = int.from_bytes(png_data[pos:pos + 4], 'big')
+            chunk_type = png_data[pos + 4:pos + 8]
 
             if pos + 12 + length > len(png_data):
                 break
 
-            chunk_data = png_data[pos:pos+12+length]
+            chunk_data = png_data[pos:pos + 12 + length]
             chunks.append((chunk_type, chunk_data))
 
             pos += 12 + length

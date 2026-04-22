@@ -6,7 +6,7 @@ from typing import Any, Callable
 from ..utils.app_runtime import configure_werkzeug_logging
 from ..checkpoint import CheckpointManager
 from ..files import FileProcessor
-from ..utils.image_card_utils import download_vndb_image, embed_json_in_png
+from ..character_card import download_vndb_image, embed_json_in_png
 from ..utils.path_utils import get_base_dir
 from ..utils.token_utils import estimate_tokens_from_text
 from ..utils.vndb_utils import load_r18_traits, clean_vndb_data

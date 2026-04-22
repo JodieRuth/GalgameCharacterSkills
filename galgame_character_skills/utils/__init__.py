@@ -3,7 +3,6 @@
 from .app_runtime import open_browser, configure_werkzeug_logging
 from .tool_handler import ToolHandler
 from .compression_service import compress_summary_files_with_llm, compress_analyses_with_llm
-from .image_card_utils import download_vndb_image, embed_json_in_png
 from .input_normalization import extract_file_paths
 from .path_utils import get_base_dir, get_resource_path
 from .request_config import build_llm_config
@@ -27,8 +26,6 @@ __all__ = [
     "LLMInteraction",
     "compress_summary_files_with_llm",
     "compress_analyses_with_llm",
-    "download_vndb_image",
-    "embed_json_in_png",
     "extract_file_paths",
     "get_base_dir",
     "get_resource_path",
