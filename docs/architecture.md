@@ -26,11 +26,11 @@
 
 如果你是第一次阅读项目架构，建议按以下顺序开始：
 
-1. [docs/README.md](/D:/AI/GalgameCharacterSkills/docs/README.md)
-2. [overview.md](/D:/AI/GalgameCharacterSkills/docs/architecture/overview.md)
-3. [dependency-rules.md](/D:/AI/GalgameCharacterSkills/docs/architecture/dependency-rules.md)
-4. [runtime-composition.md](/D:/AI/GalgameCharacterSkills/docs/architecture/runtime-composition.md)
-5. [request-lifecycle.md](/D:/AI/GalgameCharacterSkills/docs/architecture/request-lifecycle.md)
+1. [README.md](README.md)
+2. [overview.md](architecture/overview.md)
+3. [dependency-rules.md](architecture/dependency-rules.md)
+4. [runtime-composition.md](architecture/runtime-composition.md)
+5. [request-lifecycle.md](architecture/request-lifecycle.md)
 
 
 ## 3. 文档结构
@@ -59,43 +59,43 @@ docs/
 
 ### 4.1 架构总览
 
-- [overview.md](/D:/AI/GalgameCharacterSkills/docs/architecture/overview.md)
-- [dependency-rules.md](/D:/AI/GalgameCharacterSkills/docs/architecture/dependency-rules.md)
-- [runtime-composition.md](/D:/AI/GalgameCharacterSkills/docs/architecture/runtime-composition.md)
-- [request-lifecycle.md](/D:/AI/GalgameCharacterSkills/docs/architecture/request-lifecycle.md)
+- [overview.md](architecture/overview.md)
+- [dependency-rules.md](architecture/dependency-rules.md)
+- [runtime-composition.md](architecture/runtime-composition.md)
+- [request-lifecycle.md](architecture/request-lifecycle.md)
 
 ### 4.2 HTTP 入口与接口编排
 
-- [routes/README.md](/D:/AI/GalgameCharacterSkills/docs/routes/README.md)
-- [api/README.md](/D:/AI/GalgameCharacterSkills/docs/api/README.md)
+- [routes/README.md](routes/README.md)
+- [api/README.md](api/README.md)
 
 ### 4.3 核心业务流程
 
-- [application/README.md](/D:/AI/GalgameCharacterSkills/docs/application/README.md)
-- [summarize.md](/D:/AI/GalgameCharacterSkills/docs/application/summarize.md)
-- [skills.md](/D:/AI/GalgameCharacterSkills/docs/application/skills.md)
-- [character-card.md](/D:/AI/GalgameCharacterSkills/docs/application/character-card.md)
+- [application/README.md](application/README.md)
+- [summarize.md](application/summarize.md)
+- [skills.md](application/skills.md)
+- [character-card.md](application/character-card.md)
 
 ### 4.4 横切子系统
 
-- [checkpoint/README.md](/D:/AI/GalgameCharacterSkills/docs/checkpoint/README.md)
-- [gateways/README.md](/D:/AI/GalgameCharacterSkills/docs/gateways/README.md)
-- [llm/README.md](/D:/AI/GalgameCharacterSkills/docs/llm/README.md)
-- [workspace/README.md](/D:/AI/GalgameCharacterSkills/docs/workspace/README.md)
+- [checkpoint/README.md](checkpoint/README.md)
+- [gateways/README.md](gateways/README.md)
+- [llm/README.md](llm/README.md)
+- [workspace/README.md](workspace/README.md)
 
 ### 4.5 稳定契约与参考
 
-- [domain/README.md](/D:/AI/GalgameCharacterSkills/docs/domain/README.md)
-- [api-contract.md](/D:/AI/GalgameCharacterSkills/docs/reference/api-contract.md)
-- [checkpoint-schema.md](/D:/AI/GalgameCharacterSkills/docs/reference/checkpoint-schema.md)
-- [glossary.md](/D:/AI/GalgameCharacterSkills/docs/reference/glossary.md)
+- [domain/README.md](domain/README.md)
+- [api-contract.md](reference/api-contract.md)
+- [checkpoint-schema.md](reference/checkpoint-schema.md)
+- [glossary.md](reference/glossary.md)
 
 ### 4.6 架构决策记录
 
-- [0001-layered-architecture.md](/D:/AI/GalgameCharacterSkills/docs/decisions/0001-layered-architecture.md)
-- [0002-checkpoint-based-resume.md](/D:/AI/GalgameCharacterSkills/docs/decisions/0002-checkpoint-based-resume.md)
-- [0003-task-api-dispatch.md](/D:/AI/GalgameCharacterSkills/docs/decisions/0003-task-api-dispatch.md)
-- [0004-move-character-card-flow-to-application.md](/D:/AI/GalgameCharacterSkills/docs/decisions/0004-move-character-card-flow-to-application.md)
+- [0001-layered-architecture.md](decisions/0001-layered-architecture.md)
+- [0002-checkpoint-based-resume.md](decisions/0002-checkpoint-based-resume.md)
+- [0003-task-api-dispatch.md](decisions/0003-task-api-dispatch.md)
+- [0004-move-character-card-flow-to-application.md](decisions/0004-move-character-card-flow-to-application.md)
 
 
 ## 5. 当前系统的最小摘要
