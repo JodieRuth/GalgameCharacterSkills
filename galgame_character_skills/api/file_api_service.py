@@ -1,15 +1,40 @@
 """文件接口模块，负责文件扫描、上传、切片与 token 估算的薄编排。"""
 
+from typing import Any, Callable
+
 from ..domain import ok_result, fail_result
 from .validators import require_non_empty_field, require_condition
 
 
-def scan_files_result(file_processor):
+def scan_files_result(file_processor: Any) -> dict[str, Any]:
+    """扫描资源文件列表。
+
+    Args:
+        file_processor: 文件处理器。
+
+    Returns:
+        dict[str, Any]: 文件列表结果。
+
+    Raises:
+        Exception: 文件扫描失败时向上抛出。
+    """
     files = file_processor.scan_resource_files()
     return ok_result(files=files)
 
 
-def upload_files_result(file_processor, files):
+def upload_files_result(file_processor: Any, files: list[Any]) -> dict[str, Any]:
+    """上传文件到工作区。
+
+    Args:
+        file_processor: 文件处理器。
+        files: 上传文件列表。
+
+    Returns:
+        dict[str, Any]: 上传结果。
+
+    Raises:
+        Exception: 文件保存异常未被内部拦截时向上抛出。
+    """
     if not files:
         return fail_result('请先选择要上传的文件')
     try:
@@ -25,7 +50,22 @@ def upload_files_result(file_processor, files):
 
 
 @require_non_empty_field("file_path", "未提供文件路径", data_arg_index=1)
-def calculate_tokens_result(file_processor, data):
+def calculate_tokens_result(
+    file_processor: Any,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    """计算文件 token 和切片数量。
+
+    Args:
+        file_processor: 文件处理器。
+        data: 请求数据。
+
+    Returns:
+        dict[str, Any]: token 统计结果。
+
+    Raises:
+        Exception: 文件读取异常未被内部拦截时向上抛出。
+    """
     file_path = data.get('file_path', '')
     slice_size_k = data.get('slice_size_k', 50)
     try:
@@ -45,7 +85,24 @@ def calculate_tokens_result(file_processor, data):
     "请先选择文件",
     data_arg_index=1,
 )
-def slice_file_result(file_processor, data, extract_file_paths):
+def slice_file_result(
+    file_processor: Any,
+    data: dict[str, Any],
+    extract_file_paths: Callable[[dict[str, Any]], list[str]],
+) -> dict[str, Any]:
+    """执行文件切片预估。
+
+    Args:
+        file_processor: 文件处理器。
+        data: 请求数据。
+        extract_file_paths: 文件路径提取函数。
+
+    Returns:
+        dict[str, Any]: 切片统计结果。
+
+    Raises:
+        Exception: 切片异常未被内部拦截时向上抛出。
+    """
     slice_size_k = data.get('slice_size_k', 50)
     file_paths = extract_file_paths(data)
 

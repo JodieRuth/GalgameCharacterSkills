@@ -1,9 +1,28 @@
 """VNDB 服务适配模块，封装角色信息抓取后的统一返回格式。"""
 
+from typing import Any
+
 from ..domain import ok_result, fail_result
 
 
-def fetch_vndb_character(vndb_id, r18_traits, vndb_gateway):
+def fetch_vndb_character(
+    vndb_id: str,
+    r18_traits: set[str],
+    vndb_gateway: Any,
+) -> dict[str, Any]:
+    """抓取并格式化 VNDB 角色信息。
+
+    Args:
+        vndb_id: VNDB 角色编号。
+        r18_traits: 需过滤的 R18 特征集合。
+        vndb_gateway: VNDB 网关。
+
+    Returns:
+        dict[str, Any]: VNDB 查询结果。
+
+    Raises:
+        Exception: VNDB 网关调用异常未被内部拦截时向上抛出。
+    """
     vndb_id = (vndb_id or '').strip()
     if not vndb_id:
         return fail_result('未提供VNDB ID')
