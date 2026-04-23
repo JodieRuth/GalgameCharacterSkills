@@ -20,7 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual Environments
 venv/
 env/
 ENV/
@@ -46,18 +46,15 @@ instance/
 *.log
 logs/
 
-# OS
+# OS Files
 .DS_Store
 Thumbs.db
 
-# Project specific
+# Temporary Files
 output/
 temp/
 *.tmp
 
-# skills
-*-skill-main
-*-skill-code
-resource/
-summaries/
-skills/
+# Local generated skill folders outside workspace roots
+*-skill-main/
+*-skill-code/

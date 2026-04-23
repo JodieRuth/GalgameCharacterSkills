@@ -44,3 +44,8 @@
 - `checkpoints`
 
 application 和 checkpoint 等模块都应优先通过这些函数获取路径，而不是手工拼接。
+
+补充说明：
+
+- 当前版本中，`summaries / skills / cards / checkpoints` 已经进入实际主流程
+- `uploads` 目前主要还是路径预留，尚未取代项目根目录下的 `resource/` 输入目录

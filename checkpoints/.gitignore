@@ -1,2 +1,3 @@
-temp/
-*.json
+# 保留目录结构，忽略 checkpoint 运行产物。
+*
+!.gitignore

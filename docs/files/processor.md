@@ -35,4 +35,5 @@
 
 - 支持的文件类型主要是 `.txt` / `.md`
 - 资源目录默认为项目根下的 `resource/`
+- `workspace/uploads/` 虽然已经存在于路径约定中，但当前版本的 `FileProcessor` 还没有使用它作为输入根目录
 - 分词器当前使用 `tiktoken` 的 `cl100k_base`
