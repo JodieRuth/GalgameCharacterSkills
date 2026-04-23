@@ -62,6 +62,27 @@ python main.py
 1. 在 Web 界面中直接填写
 2. 通过项目根目录下的 `.env` 或环境变量提供默认值
 
+如果你希望启动后自动带出默认配置，推荐使用仓库内的 `.env.example`：
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell 可以使用：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+然后按需修改 `.env` 中的内容。`.env` 已被 `.gitignore` 忽略，不会默认进入版本控制。
+
+关于 `GCS_BASEURL`：
+
+- 目前通常需要你自己确认目标服务是否要求带 `/v1`
+- 如果服务端接口地址要求使用 `/v1`，请在 `GCS_BASEURL` 中手动写完整
+- 例如 `https://api.openai.com/v1` 或 `http://localhost:11434/v1`
+- 后续版本会优化这里的处理，尽量提供自动补全，或自动兼容“带 `/v1` / 不带 `/v1`”两种写法
+
 支持的配置项如下：
 
 - `GCS_BASEURL`
@@ -70,7 +91,7 @@ python main.py
 - `GCS_MAX_RETRIES`
 - `GCS_WORKSPACE_DIR`
 
-示例：
+`.env.example` 中包含以下配置项：
 
 ```env
 GCS_BASEURL=https://api.openai.com/v1
