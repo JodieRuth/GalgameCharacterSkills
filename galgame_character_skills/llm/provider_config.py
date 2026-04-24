@@ -25,6 +25,7 @@ def build_completion_kwargs(
     tools: list[dict[str, Any]] | None,
     apikey: str = "",
     baseurl: str = "",
+    reasoning_effort: str = "",
 ) -> dict[str, Any]:
     """构造 completion 请求参数。"""
     kwargs = {
@@ -49,6 +50,8 @@ def build_completion_kwargs(
         kwargs["api_key"] = apikey
     if baseurl:
         kwargs["api_base"] = baseurl
+    if reasoning_effort:
+        kwargs["reasoning_effort"] = reasoning_effort
     return kwargs
 
 

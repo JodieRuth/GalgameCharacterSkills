@@ -13,6 +13,7 @@ class AppSettings:
     apikey: str = ""
     max_retries: int | None = None
     workspace_dir: str = ""
+    reasoning_effort: str = ""
 
 
 def _parse_dotenv_file(dotenv_path: str) -> dict[str, str]:
@@ -136,6 +137,7 @@ def get_app_settings() -> AppSettings:
     apikey = _read_config_value(dotenv_values, "GCS_APIKEY", "")
     max_retries = _parse_positive_int(_read_config_value(dotenv_values, "GCS_MAX_RETRIES", ""))
     workspace_dir = _read_config_value(dotenv_values, "GCS_WORKSPACE_DIR", "")
+    reasoning_effort = _read_config_value(dotenv_values, "GCS_REASONING_EFFORT", "")
 
     return AppSettings(
         baseurl=baseurl,
@@ -143,6 +145,7 @@ def get_app_settings() -> AppSettings:
         apikey=apikey,
         max_retries=max_retries,
         workspace_dir=workspace_dir,
+        reasoning_effort=reasoning_effort,
     )
 
 

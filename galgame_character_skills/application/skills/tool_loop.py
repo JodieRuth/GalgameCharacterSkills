@@ -90,9 +90,10 @@ def run_skill_tool_loop(
         messages_ref: list[Any],
         all_results_ref: list[Any],
     ) -> None:
+        message = response.choices[0].message
         assistant_message = {
             "role": "assistant",
-            "content": response.choices[0].message.content if response.choices[0].message.content else "",
+            "content": message.content if message.content else "",
             "tool_calls": [tc if isinstance(tc, dict) else {
                 "id": tc.id,
                 "type": tc.type,
@@ -102,6 +103,9 @@ def run_skill_tool_loop(
                 }
             } for tc in tool_calls]
         }
+        # 如果存在 reasoning_content，需要传递回 API（支持思考模式的模型）
+        if hasattr(message, "reasoning_content") and message.reasoning_content:
+            assistant_message["reasoning_content"] = message.reasoning_content
         messages_ref.append(assistant_message)
 
         for tool_call in tool_calls:

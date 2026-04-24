@@ -26,7 +26,8 @@ def build_llm_client(
     modelname = config.get('modelname', '')
     apikey = config.get('apikey', '')
     max_retries = config.get('max_retries', 0) or None
+    reasoning_effort = config.get('reasoning_effort', '')
     client = LLMInteraction(runtime=request_runtime)
     if baseurl or modelname or apikey:
-        client.set_config(baseurl, modelname, apikey, max_retries=max_retries)
+        client.set_config(baseurl, modelname, apikey, max_retries=max_retries, reasoning_effort=reasoning_effort)
     return client

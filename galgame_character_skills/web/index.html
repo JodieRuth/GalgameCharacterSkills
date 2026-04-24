@@ -585,6 +585,17 @@
                 <label class="form-label optional-label">重试次数</label>
                 <input type="number" class="form-input" id="maxRetries" placeholder="3" min="1" max="20">
             </div>
+            <div class="form-group">
+                <label class="form-label optional-label">思考强度</label>
+                <select class="form-input" id="reasoningEffort" onchange="onReasoningEffortChange()">
+                    <option value="">默认 (使用模型默认)</option>
+                    <option value="low">低 - 快速响应</option>
+                    <option value="medium">中 - 平衡</option>
+                    <option value="high">高 - 深度思考</option>
+                    <option value="custom">自定义...</option>
+                </select>
+                <input type="text" class="form-input hidden" id="reasoningEffortCustom" placeholder="输入自定义值 (如: xhigh, max)" style="margin-top: 8px;">
+            </div>
         </div>
         
         <div class="card">
@@ -748,6 +759,8 @@
                 baseurl: document.getElementById('baseurl'),
                 modelname: document.getElementById('modelname'),
                 maxRetries: document.getElementById('maxRetries'),
+                reasoningEffort: document.getElementById('reasoningEffort'),
+                reasoningEffortCustom: document.getElementById('reasoningEffortCustom'),
                 outputLanguage: document.getElementById('outputLanguage'),
                 concurrency: document.getElementById('concurrency'),
                 sliceSize: document.getElementById('sliceSize')
@@ -771,6 +784,8 @@
                 baseurl: inputs.baseurl.value || '',
                 modelname: inputs.modelname.value || '',
                 maxRetries: inputs.maxRetries.value || '',
+                reasoningEffort: inputs.reasoningEffort.value || '',
+                reasoningEffortCustom: inputs.reasoningEffortCustom.value || '',
                 outputLanguage: inputs.outputLanguage.value || '',
                 concurrency: inputs.concurrency.value || '',
                 sliceSize: inputs.sliceSize.value || ''
@@ -784,9 +799,12 @@
             if (typeof config.baseurl === 'string') inputs.baseurl.value = config.baseurl;
             if (typeof config.modelname === 'string') inputs.modelname.value = config.modelname;
             if (typeof config.maxRetries === 'string' || typeof config.maxRetries === 'number') inputs.maxRetries.value = config.maxRetries;
+            if (typeof config.reasoningEffort === 'string') inputs.reasoningEffort.value = config.reasoningEffort;
+            if (typeof config.reasoningEffortCustom === 'string') inputs.reasoningEffortCustom.value = config.reasoningEffortCustom;
             if (typeof config.outputLanguage === 'string' && config.outputLanguage) inputs.outputLanguage.value = config.outputLanguage;
             if (typeof config.concurrency === 'string' || typeof config.concurrency === 'number') inputs.concurrency.value = config.concurrency;
             if (typeof config.sliceSize === 'string' || typeof config.sliceSize === 'number') inputs.sliceSize.value = config.sliceSize;
+            onReasoningEffortChange();
         }
 
         async function applyServerConfigDefaults() {
@@ -805,6 +823,16 @@
                 if (result.baseurl) inputs.baseurl.value = result.baseurl;
                 if (result.modelname) inputs.modelname.value = result.modelname;
                 if (result.max_retries) inputs.maxRetries.value = result.max_retries;
+                if (result.reasoning_effort) {
+                    const presetValues = ['', 'low', 'medium', 'high'];
+                    if (presetValues.includes(result.reasoning_effort)) {
+                        inputs.reasoningEffort.value = result.reasoning_effort;
+                    } else {
+                        inputs.reasoningEffort.value = 'custom';
+                        inputs.reasoningEffortCustom.value = result.reasoning_effort;
+                    }
+                    onReasoningEffortChange();
+                }
             } catch (e) {
             }
         }
@@ -1110,6 +1138,16 @@
                 calculateTotalTokens();
             }
         }
+
+        function onReasoningEffortChange() {
+            const select = document.getElementById('reasoningEffort');
+            const customInput = document.getElementById('reasoningEffortCustom');
+            if (select.value === 'custom') {
+                customInput.classList.remove('hidden');
+            } else {
+                customInput.classList.add('hidden');
+            }
+        }
         
         async function onRoleSelectChange() {
             const roleName = document.getElementById('roleSelect').value;
@@ -1242,12 +1280,18 @@
             const modelname = document.getElementById('modelname').value;
             const apikey = document.getElementById('apikey').value;
             const maxRetries = parseInt(document.getElementById('maxRetries').value) || 0;
-            
+            const reasoningEffortSelect = document.getElementById('reasoningEffort').value;
+            let reasoningEffort = reasoningEffortSelect;
+            if (reasoningEffortSelect === 'custom') {
+                reasoningEffort = document.getElementById('reasoningEffortCustom').value.trim();
+            }
+
             return {
                 baseurl: baseurl,
                 modelname: modelname,
                 apikey: apikey,
-                max_retries: maxRetries
+                max_retries: maxRetries,
+                reasoning_effort: reasoningEffort
             };
         }
         
@@ -1453,6 +1497,11 @@
                 const apikey = document.getElementById('apikey').value;
                 const concurrency = parseInt(document.getElementById('concurrency').value) || 1;
                 const maxRetries = parseInt(document.getElementById('maxRetries').value) || 0;
+                const reasoningEffortSelect = document.getElementById('reasoningEffort').value;
+                let reasoningEffort = reasoningEffortSelect;
+                if (reasoningEffortSelect === 'custom') {
+                    reasoningEffort = document.getElementById('reasoningEffortCustom').value.trim();
+                }
 
                 const response = await fetch(`/api/checkpoints/${checkpointId}/resume`, {
                     method: 'POST',
@@ -1462,7 +1511,8 @@
                         modelname: modelname,
                         apikey: apikey,
                         concurrency: concurrency,
-                        max_retries: maxRetries
+                        max_retries: maxRetries,
+                        reasoning_effort: reasoningEffort
                     })
                 });
                 const result = await response.json();

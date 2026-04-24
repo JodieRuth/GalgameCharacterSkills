@@ -102,20 +102,21 @@ def _append_tool_messages(messages: list[dict[str, Any]], assistant_message: Any
     Raises:
         Exception: 消息构造失败时向上抛出。
     """
-    messages.append(
-        {
-            "role": "assistant",
-            "content": assistant_message.content or "",
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in assistant_message.tool_calls
-            ],
-        }
-    )
+    msg = {
+        "role": "assistant",
+        "content": assistant_message.content or "",
+        "tool_calls": [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+            }
+            for tc in assistant_message.tool_calls
+        ],
+    }
+    if hasattr(assistant_message, "reasoning_content") and assistant_message.reasoning_content:
+        msg["reasoning_content"] = assistant_message.reasoning_content
+    messages.append(msg)
 
     for tool_call in assistant_message.tool_calls:
         messages.append(

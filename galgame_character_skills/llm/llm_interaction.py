@@ -33,6 +33,7 @@ class LLMInteraction:
         self.modelname = ""
         self.apikey = ""
         self.max_retries = 3
+        self.reasoning_effort = ""
         self.tool_gateway = tool_gateway or DefaultToolGateway()
         self.transport = transport or CompletionTransport()
         self.runtime = runtime or self._runtime_cls()
@@ -43,6 +44,7 @@ class LLMInteraction:
         modelname: str,
         apikey: str,
         max_retries: int | None = None,
+        reasoning_effort: str = "",
     ) -> None:
         """设置客户端配置。
 
@@ -51,6 +53,7 @@ class LLMInteraction:
             modelname: 模型名。
             apikey: API Key。
             max_retries: 最大重试次数。
+            reasoning_effort: 思考强度 (low/medium/high)。
 
         Returns:
             None
@@ -63,6 +66,7 @@ class LLMInteraction:
         self.apikey = apikey
         if max_retries is not None and max_retries > 0:
             self.max_retries = max_retries
+        self.reasoning_effort = reasoning_effort
     
     @classmethod
     def build_runtime(cls, total_requests: int = 0) -> Any:
@@ -129,6 +133,7 @@ class LLMInteraction:
             tools=tools,
             apikey=self.apikey,
             baseurl=self.baseurl,
+            reasoning_effort=self.reasoning_effort,
         )
         
         print(f"[LLM] Attempt 1/{max_retries}")

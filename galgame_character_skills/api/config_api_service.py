@@ -42,6 +42,7 @@ def get_config_result(get_app_settings: Callable[[], Any]) -> dict[str, Any]:
         modelname=settings.modelname,
         max_retries=settings.max_retries,
         workspace_dir=settings.workspace_dir,
+        reasoning_effort=settings.reasoning_effort,
         has_apikey=bool(settings.apikey),
         apikey_masked=_mask_secret(settings.apikey),
     )

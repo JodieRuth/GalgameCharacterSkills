@@ -66,4 +66,5 @@ def build_llm_config(data: dict[str, Any] | None) -> dict[str, Any]:
         'modelname': _resolve_optional_string(data.get('modelname'), settings.modelname),
         'apikey': _resolve_optional_string(data.get('apikey'), settings.apikey),
         'max_retries': _resolve_max_retries(data.get('max_retries'), settings.max_retries),
+        'reasoning_effort': _resolve_optional_string(data.get('reasoning_effort'), settings.reasoning_effort),
     }
