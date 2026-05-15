@@ -227,13 +227,18 @@ class CheckpointManager:
             }
             if hasattr(response, 'choices'):
                 for choice in response.choices:
+                    message_data = {
+                        'role': getattr(choice.message, 'role', 'assistant'),
+                        'content': getattr(choice.message, 'content', None),
+                    }
+                    for key in ['reasoning_content', 'reasoning', 'thinking', 'reasoning_details', 'thinking_blocks']:
+                        value = getattr(choice.message, key, None)
+                        if value:
+                            message_data[key] = value
                     choice_data = {
                         'index': getattr(choice, 'index', 0),
                         'finish_reason': getattr(choice, 'finish_reason', None),
-                        'message': {
-                            'role': getattr(choice.message, 'role', 'assistant'),
-                            'content': getattr(choice.message, 'content', None),
-                        }
+                        'message': message_data
                     }
                     if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
                         tool_calls = []

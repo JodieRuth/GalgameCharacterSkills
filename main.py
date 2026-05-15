@@ -463,20 +463,7 @@ def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000, c
                     print(f"Warning: LLM did not call remove_duplicate_sections in iteration {iteration}")
                     break
                 
-                messages.append({
-                    "role": "assistant",
-                    "content": message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id if hasattr(tc, 'id') else tc.get('id'),
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name if hasattr(tc, 'function') else tc['function']['name'],
-                                "arguments": tc.function.arguments if hasattr(tc, 'function') else tc['function']['arguments']
-                            }
-                        } for tc in message.tool_calls
-                    ]
-                })
+                messages.append(llm_client.message_to_history(message))
                 
                 for result in tool_results:
                     messages.append({
@@ -651,20 +638,7 @@ def _compress_analyses_with_llm(analyses, llm_client, target_budget_tokens=11500
                     print(f"Warning: LLM did not call remove_duplicate_sections in iteration {iteration}")
                     break
                 
-                messages.append({
-                    "role": "assistant",
-                    "content": message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id if hasattr(tc, 'id') else tc.get('id'),
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name if hasattr(tc, 'function') else tc['function']['name'],
-                                "arguments": tc.function.arguments if hasattr(tc, 'function') else tc['function']['arguments']
-                            }
-                        } for tc in message.tool_calls
-                    ]
-                })
+                messages.append(llm_client.message_to_history(message))
                 
                 for result in tool_results:
                     messages.append({
@@ -715,9 +689,10 @@ def get_llm_client():
     modelname = data.get('modelname', '')
     apikey = data.get('apikey', '')
     max_retries = data.get('max_retries', 0) or None
+    reasoning_effort = data.get('reasoning_effort', '')
     client = LLMInteraction()
     if baseurl or modelname or apikey:
-        client.set_config(baseurl, modelname, apikey, max_retries=max_retries)
+        client.set_config(baseurl, modelname, apikey, max_retries=max_retries, reasoning_effort=reasoning_effort)
     return client
 
 @app.route('/')
@@ -876,7 +851,7 @@ def process_single_slice(args):
     slice_index, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id = args
     llm_client = LLMInteraction()
     if config.get('baseurl') or config.get('modelname') or config.get('apikey'):
-        llm_client.set_config(config.get('baseurl'), config.get('modelname'), config.get('apikey'), max_retries=config.get('max_retries'))
+        llm_client.set_config(config.get('baseurl'), config.get('modelname'), config.get('apikey'), max_retries=config.get('max_retries'), reasoning_effort=config.get('reasoning_effort', ''))
 
     if checkpoint_id:
         existing = ckpt_manager.get_slice_result(checkpoint_id, slice_index)
@@ -1022,7 +997,8 @@ def _do_summarize(data):
         'baseurl': data.get('baseurl', ''),
         'modelname': data.get('modelname', ''),
         'apikey': data.get('apikey', ''),
-        'max_retries': data.get('max_retries', 0) or None
+        'max_retries': data.get('max_retries', 0) or None,
+        'reasoning_effort': data.get('reasoning_effort', '')
     }
     output_language = data.get('output_language', '')
     vndb_data = clean_vndb_data(data.get('vndb_data'))
@@ -1059,7 +1035,8 @@ def _do_summarize(data):
                 'vndb_data': vndb_data,
                 'slice_size_k': slice_size_k,
                 'file_paths': file_paths,
-                'concurrency': concurrency
+                'concurrency': concurrency,
+                'reasoning_effort': config.get('reasoning_effort', '')
             }
         )
 
@@ -1313,19 +1290,7 @@ def generate_skills_folder(data):
         tool_calls = llm_interaction.get_tool_response(response)
         if not tool_calls:
             break
-        assistant_message = {
-            "role": "assistant",
-            "content": response.choices[0].message.content if response.choices[0].message.content else "",
-            "tool_calls": [tc if isinstance(tc, dict) else {
-                "id": tc.id,
-                "type": tc.type,
-                "function": {
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments
-                }
-            } for tc in tool_calls]
-        }
-        messages.append(assistant_message)
+        messages.append(llm_interaction.message_to_history(response.choices[0].message))
         for tool_call in tool_calls:
             result = ToolHandler.handle_tool_call(tool_call)
             all_results.append(result)

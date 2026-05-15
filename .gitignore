@@ -53,4 +53,8 @@ Thumbs.db
 # Project specific
 output/
 temp/
-*.tmp
+*.tmpresource/
+skills/
+summaries/
+checkpoints/
+resource/

@@ -26,14 +26,28 @@ class FileProcessor:
                     files.append(file_path)
         return files
     
+    @staticmethod
+    def _read_text_as_utf8(file_path):
+        encodings = ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "gb18030")
+        last_error = None
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    content = f.read()
+                if encoding != "utf-8":
+                    with open(file_path, 'w', encoding='utf-8', newline='') as f:
+                        f.write(content)
+                return content
+            except UnicodeError as e:
+                last_error = e
+        if last_error:
+            raise last_error
+        raise UnicodeError("无法读取文件编码")
+    
     def calculate_tokens(self, file_path):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            tokens = self.tokenizer.encode(content)
-            return len(tokens)
-        except Exception as e:
-            return 0
+        content = self._read_text_as_utf8(file_path)
+        tokens = self.tokenizer.encode(content)
+        return len(tokens)
     
     def calculate_slices(self, token_count, slice_size_k=50):
         slice_size = slice_size_k * 1000

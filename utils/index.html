@@ -585,6 +585,17 @@
                 <label class="form-label optional-label">重试次数</label>
                 <input type="number" class="form-input" id="maxRetries" placeholder="3" min="1" max="20">
             </div>
+            <div class="form-group">
+                <label class="form-label optional-label">推理强度</label>
+                <select class="form-input" id="reasoningEffort" onchange="onReasoningEffortChange()">
+                    <option value="">默认</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="custom">自定义</option>
+                </select>
+                <input type="text" class="form-input hidden" id="reasoningEffortCustom" placeholder="例如 minimal" style="margin-top: 8px;">
+            </div>
         </div>
         
         <div class="card">
@@ -737,6 +748,7 @@
         let compressionMode = 'original';
         let vndbData = null;
         let fileTokenCache = {};
+        let fileTokenErrorCache = {};
         
         function log(message, type = 'normal') {
             const logContent = document.getElementById('logContent');
@@ -912,7 +924,8 @@
                 
                 const orderNum = isSelected ? orderIndex + 1 : '';
                 const tokenCount = fileTokenCache[file] || 0;
-                const tokenDisplay = tokenCount > 0 ? `(${(tokenCount/1000).toFixed(1)}k tokens)` : '';
+                const tokenError = fileTokenErrorCache[file] || '';
+                const tokenDisplay = tokenError ? `(${tokenError})` : (tokenCount > 0 ? `(${(tokenCount/1000).toFixed(1)}k tokens)` : '');
                 
                 fileItem.innerHTML = `
                     <span class="file-order">${orderNum}</span>
@@ -947,8 +960,8 @@
         }
         
         async function fetchFileTokenCount(filePath) {
-            if (fileTokenCache[filePath]) return;
-            
+            if (Object.prototype.hasOwnProperty.call(fileTokenCache, filePath)) return;       
+
             try {
                 const response = await fetch('/api/files/tokens', {
                     method: 'POST',
@@ -959,9 +972,21 @@
                 
                 if (result.success) {
                     fileTokenCache[filePath] = result.token_count;
+                    if (result.token_count <= 0) {
+                        fileTokenErrorCache[filePath] = result.token_error || '这个文件有问题';
+                    } else {
+                        delete fileTokenErrorCache[filePath];
+                    }
+                    renderFileList(previousFiles);
+                } else {
+                    fileTokenCache[filePath] = 0;
+                    fileTokenErrorCache[filePath] = result.message || '这个文件有问题';       
                     renderFileList(previousFiles);
                 }
             } catch (e) {
+                fileTokenCache[filePath] = 0;
+                fileTokenErrorCache[filePath] = '这个文件有问题';
+                renderFileList(previousFiles);
                 console.error('Failed to fetch token count:', e);
             }
         }
@@ -973,16 +998,18 @@
             let totalTokens = 0;
             
             for (const file of selectedFiles) {
-                if (!fileTokenCache[file]) {
+                if (!Object.prototype.hasOwnProperty.call(fileTokenCache, file)) {
                     await fetchFileTokenCount(file);
                 }
                 totalTokens += fileTokenCache[file] || 0;
             }
-            
+
+            const problematicFiles = selectedFiles.filter(file => fileTokenErrorCache[file]); 
             const sliceCount = Math.floor(totalTokens / (sliceSizeK * 1000)) + 1;
-            
+            const problemText = problematicFiles.length > 0 ? `  |  异常文件: ${problematicFiles.length} 个` : '';
+
             document.getElementById('tokenInfo').textContent = 
-                `📊 总Token: ${totalTokens.toLocaleString()}  |  切片数: ${sliceCount} (${sliceSizeK}k/片)  |  文件数: ${selectedFiles.length}`;
+                `📊 总Token: ${totalTokens.toLocaleString()}  |  切片数: ${sliceCount} (${sliceSizeK}k/片)  |  文件数: ${selectedFiles.length}${problemText}`;
             document.getElementById('tokenInfo').className = 'token-info';
             
             currentFile = selectedFiles[0];
@@ -1128,19 +1155,32 @@
         
         scanRoles();
         
-
+        function onReasoningEffortChange() {
+            const reasoningEffortSelect = document.getElementById('reasoningEffort').value;
+            const customInput = document.getElementById('reasoningEffortCustom');
+            customInput.classList.toggle('hidden', reasoningEffortSelect !== 'custom');
+            if (reasoningEffortSelect === 'custom') {
+                customInput.focus();
+            }
+        }
         
         function getConfig() {
             const baseurl = document.getElementById('baseurl').value;
             const modelname = document.getElementById('modelname').value;
             const apikey = document.getElementById('apikey').value;
             const maxRetries = parseInt(document.getElementById('maxRetries').value) || 0;
+            const reasoningEffortSelect = document.getElementById('reasoningEffort').value;   
+            let reasoningEffort = reasoningEffortSelect;
+            if (reasoningEffortSelect === 'custom') {
+                reasoningEffort = document.getElementById('reasoningEffortCustom').value.trim();
+            }
             
             return {
                 baseurl: baseurl,
                 modelname: modelname,
                 apikey: apikey,
-                max_retries: maxRetries
+                max_retries: maxRetries,
+                reasoning_effort: reasoningEffort
             };
         }
         
@@ -1346,6 +1386,11 @@
                 const apikey = document.getElementById('apikey').value;
                 const concurrency = parseInt(document.getElementById('concurrency').value) || 1;
                 const maxRetries = parseInt(document.getElementById('maxRetries').value) || 0;
+                const reasoningEffortSelect = document.getElementById('reasoningEffort').value;
+                let reasoningEffort = reasoningEffortSelect;
+                if (reasoningEffortSelect === 'custom') {
+                    reasoningEffort = document.getElementById('reasoningEffortCustom').value.trim();
+                }
 
                 const response = await fetch(`/api/checkpoints/${checkpointId}/resume`, {
                     method: 'POST',
@@ -1355,7 +1400,8 @@
                         modelname: modelname,
                         apikey: apikey,
                         concurrency: concurrency,
-                        max_retries: maxRetries
+                        max_retries: maxRetries,
+                        reasoning_effort: reasoningEffort
                     })
                 });
                 const result = await response.json();

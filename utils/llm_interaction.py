@@ -60,13 +60,15 @@ class LLMInteraction:
         self.modelname = ""
         self.apikey = ""
         self.max_retries = 3
+        self.reasoning_effort = ""
     
-    def set_config(self, baseurl, modelname, apikey, max_retries=None):
+    def set_config(self, baseurl, modelname, apikey, max_retries=None, reasoning_effort=""):
         self.baseurl = baseurl
         self.modelname = modelname
         self.apikey = apikey
         if max_retries is not None and max_retries > 0:
             self.max_retries = max_retries
+        self.reasoning_effort = reasoning_effort
     
     @classmethod
     def set_total_requests(cls, total):
@@ -89,7 +91,15 @@ class LLMInteraction:
             elif 'gemini' in baseurl or 'google' in baseurl:
                 model = f"google/{model}"
             else:
-                model = f"openai/{model}"
+                try:
+                    parsed_model, provider, _, _ = litellm.get_llm_provider(model)
+                    if provider:
+                        model = f"{provider}/{parsed_model}"
+                    else:
+                        model = f"openai/{model}"
+                except Exception as e:
+                    print(f"[LLM] LiteLLM provider detection failed for model '{model}': {e}")
+                    model = f"openai/{model}"
         
         api_key_preview = self.apikey[:10] + "..." if self.apikey and len(self.apikey) > 10 else (self.apikey if self.apikey else "None")
         
@@ -128,6 +138,8 @@ class LLMInteraction:
             kwargs["api_key"] = self.apikey
         if self.baseurl:
             kwargs["api_base"] = self.baseurl
+        if self.reasoning_effort:
+            kwargs["reasoning_effort"] = self.reasoning_effort
         
         print(f"[LLM] Attempt 1/{max_retries}")
         
@@ -145,8 +157,6 @@ class LLMInteraction:
                     choice = response.choices[0]
                     if hasattr(choice, 'message'):
                         msg = choice.message
-                        content_preview = msg.content[:100] + "..." if msg.content and len(msg.content) > 100 else msg.content
-                        print(f"[LLM] Response content preview: {content_preview}")
                         if hasattr(msg, 'tool_calls') and msg.tool_calls:
                             print(f"[LLM] Tool calls: {len(msg.tool_calls)}")
                 return response
@@ -172,6 +182,40 @@ class LLMInteraction:
             if hasattr(choice, 'message') and hasattr(choice.message, 'tool_calls'):
                 return choice.message.tool_calls
         return None
+
+    @staticmethod
+    def message_to_history(message):
+        if isinstance(message, dict):
+            history_message = {
+                "role": message.get("role", "assistant"),
+                "content": message.get("content") or ""
+            }
+            for key in ["reasoning_content", "reasoning", "thinking", "reasoning_details", "thinking_blocks"]:
+                if message.get(key):
+                    history_message[key] = message.get(key)
+            tool_calls = message.get("tool_calls")
+        else:
+            history_message = {
+                "role": getattr(message, "role", "assistant"),
+                "content": getattr(message, "content", None) or ""
+            }
+            for key in ["reasoning_content", "reasoning", "thinking", "reasoning_details", "thinking_blocks"]:
+                value = getattr(message, key, None)
+                if value:
+                    history_message[key] = value
+            tool_calls = getattr(message, "tool_calls", None)
+        if tool_calls:
+            history_message["tool_calls"] = [
+                tc if isinstance(tc, dict) else {
+                    "id": tc.id,
+                    "type": tc.type,
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments
+                    }
+                } for tc in tool_calls
+            ]
+        return history_message
     
     def summarize_content(self, content, role_name, instruction, output_file_path, output_language="", vndb_data=None):
         tools = [
@@ -1079,17 +1123,7 @@ Call write_field for each field. Set is_complete=true on the last call."""
                         except Exception:
                             pass
                 
-                messages.append({
-                    "role": "assistant",
-                    "content": message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.function.name, "arguments": tc.function.arguments}
-                        } for tc in message.tool_calls
-                    ]
-                })
+                messages.append(self.message_to_history(message))
                 
                 for tool_call in message.tool_calls:
                     messages.append({
@@ -1144,6 +1178,12 @@ Call write_field for each field. Set is_complete=true on the last call."""
         
         result = ToolHandler.fill_json_template(template_path, output_path, field_mappings)
         
+        if result.startswith("Template filling failed"):
+            return {
+                'success': False,
+                'message': result
+            }
+
         return {
             'success': True,
             'output_path': output_path,
