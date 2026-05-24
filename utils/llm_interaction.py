@@ -63,13 +63,59 @@ class LLMInteraction:
         self.reasoning_effort = ""
     
     def set_config(self, baseurl, modelname, apikey, max_retries=None, reasoning_effort=""):
-        self.baseurl = baseurl
-        self.modelname = modelname
-        self.apikey = apikey
+        self.baseurl = (baseurl or "").strip()
+        self.modelname = (modelname or "").strip()
+        self.apikey = (apikey or "").strip()
         if max_retries is not None and max_retries > 0:
             self.max_retries = max_retries
-        self.reasoning_effort = reasoning_effort
+        self.reasoning_effort = (reasoning_effort or "").strip()
     
+    def _resolve_model(self):
+        model = self.modelname
+        baseurl = self.baseurl.lower() if self.baseurl else ''
+        if model and '/' not in model:
+            if self.baseurl and '/v1' in baseurl:
+                model = f"openai/{model}"
+            elif 'deepseek' in baseurl:
+                model = f"deepseek/{model}"
+            elif 'anthropic' in baseurl or 'claude' in baseurl:
+                model = f"anthropic/{model}"
+            elif 'gemini' in baseurl or 'google' in baseurl:
+                model = f"gemini/{model}"
+            else:
+                try:
+                    parsed_model, provider, _, _ = litellm.get_llm_provider(model)
+                    if provider:
+                        model = f"{provider}/{parsed_model}"
+                    else:
+                        model = f"openai/{model}"
+                except Exception:
+                    model = f"openai/{model}"
+        return model
+    
+    def preflight_check(self):
+        model = self._resolve_model()
+        kwargs = {
+            "model": model,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "timeout": 30,
+            "max_tokens": 5
+        }
+        if self.apikey:
+            kwargs["api_key"] = self.apikey
+        if self.baseurl:
+            kwargs["api_base"] = self.baseurl
+        print(f"[LLM] Preflight check - Model: {model}, Base URL: {self.baseurl}")
+        try:
+            response = litellm.completion(**kwargs)
+            if response and hasattr(response, 'choices') and response.choices:
+                print(f"[LLM] Preflight check passed")
+                return True, None
+            return False, "LLM returned empty response"
+        except Exception as e:
+            print(f"[LLM] Preflight check failed: {e}")
+            return False, str(e)
+
     @classmethod
     def set_total_requests(cls, total):
         cls._total_requests = total
@@ -80,26 +126,7 @@ class LLMInteraction:
         
         if max_retries is None:
             max_retries = self.max_retries
-        model = self.modelname
-        baseurl = self.baseurl.lower() if self.baseurl else ''
-        
-        if model and '/' not in model:
-            if 'deepseek' in baseurl:
-                model = f"deepseek/{model}"
-            elif 'anthropic' in baseurl or 'claude' in baseurl:
-                model = f"anthropic/{model}"
-            elif 'gemini' in baseurl or 'google' in baseurl:
-                model = f"google/{model}"
-            else:
-                try:
-                    parsed_model, provider, _, _ = litellm.get_llm_provider(model)
-                    if provider:
-                        model = f"{provider}/{parsed_model}"
-                    else:
-                        model = f"openai/{model}"
-                except Exception as e:
-                    print(f"[LLM] LiteLLM provider detection failed for model '{model}': {e}")
-                    model = f"openai/{model}"
+        model = self._resolve_model()
         
         api_key_preview = self.apikey[:10] + "..." if self.apikey and len(self.apikey) > 10 else (self.apikey if self.apikey else "None")
         

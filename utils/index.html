@@ -1072,7 +1072,7 @@
                 const contextResponse = await fetch('/api/context-limit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model_name: document.getElementById('modelname').value })
+                    body: JSON.stringify({ model_name: document.getElementById('modelname').value.trim() })
                 });
                 const contextResult = await contextResponse.json();
                 const contextLimit = (contextResult.success && contextResult.context_limit) ? contextResult.context_limit : 115000;
@@ -1165,9 +1165,9 @@
         }
         
         function getConfig() {
-            const baseurl = document.getElementById('baseurl').value;
-            const modelname = document.getElementById('modelname').value;
-            const apikey = document.getElementById('apikey').value;
+            const baseurl = document.getElementById('baseurl').value.trim();
+            const modelname = document.getElementById('modelname').value.trim();
+            const apikey = document.getElementById('apikey').value.trim();
             const maxRetries = parseInt(document.getElementById('maxRetries').value) || 0;
             const reasoningEffortSelect = document.getElementById('reasoningEffort').value;   
             let reasoningEffort = reasoningEffortSelect;
@@ -1381,9 +1381,9 @@
             log(`→ 正在恢复任务: ${checkpointId}`, 'info');
             
             try {
-                const baseurl = document.getElementById('baseurl').value;
-                const modelname = document.getElementById('modelname').value;
-                const apikey = document.getElementById('apikey').value;
+                const baseurl = document.getElementById('baseurl').value.trim();
+                const modelname = document.getElementById('modelname').value.trim();
+                const apikey = document.getElementById('apikey').value.trim();
                 const concurrency = parseInt(document.getElementById('concurrency').value) || 1;
                 const maxRetries = parseInt(document.getElementById('maxRetries').value) || 0;
                 const reasoningEffortSelect = document.getElementById('reasoningEffort').value;

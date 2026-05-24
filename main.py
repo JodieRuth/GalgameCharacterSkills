@@ -1044,6 +1044,11 @@ def _do_summarize(data):
         return jsonify({'success': False, 'message': '请先选择文件'})
     
     llm_interaction = get_llm_client()
+
+    preflight_ok, preflight_err = llm_interaction.preflight_check()
+    if not preflight_ok:
+        return jsonify({'success': False, 'message': f'连接预检失败，无法连接到LLM服务: {preflight_err}'})
+
     current_slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
     LLMInteraction.set_total_requests(len(current_slices))
     
@@ -1263,6 +1268,10 @@ def generate_skills_folder(data):
     )
     llm_interaction = get_llm_client()
     
+    preflight_ok, preflight_err = llm_interaction.preflight_check()
+    if not preflight_ok:
+        return jsonify({'success': False, 'message': f'连接预检失败，无法连接到LLM服务: {preflight_err}'})
+
     if not resume_checkpoint_id:
         messages, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
         ckpt_manager.update_progress(checkpoint_id, total_steps=20, current_phase='tool_call_loop')
@@ -1580,6 +1589,11 @@ def generate_character_card(data):
             image_path = None
 
     llm_interaction = get_llm_client()
+
+    preflight_ok, preflight_err = llm_interaction.preflight_check()
+    if not preflight_ok:
+        return jsonify({'success': False, 'message': f'连接预检失败，无法连接到LLM服务: {preflight_err}'})
+
     result = llm_interaction.generate_character_card_with_tools(
         role_name,
         all_character_analyses,
