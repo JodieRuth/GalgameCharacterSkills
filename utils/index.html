@@ -558,6 +558,32 @@
             max-width: 300px;
             text-align: right;
         }
+
+        .inline-config-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .inline-config-row .form-input {
+            flex: 1;
+        }
+
+        .inline-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            color: #4a5568;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .inline-toggle input {
+            width: 14px;
+            height: 14px;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -587,13 +613,19 @@
             </div>
             <div class="form-group">
                 <label class="form-label optional-label">推理强度</label>
-                <select class="form-input" id="reasoningEffort" onchange="onReasoningEffortChange()">
-                    <option value="">默认</option>
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                    <option value="custom">自定义</option>
-                </select>
+                <div class="inline-config-row">
+                    <select class="form-input" id="reasoningEffort" onchange="onReasoningEffortChange()">
+                        <option value="">默认</option>
+                        <option value="low">low</option>
+                        <option value="medium">medium</option>
+                        <option value="high">high</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                    <label class="inline-toggle" for="streamingEnabled" title="启用后整个程序统一使用流式传输">
+                        <input type="checkbox" id="streamingEnabled">
+                        <span>Streaming</span>
+                    </label>
+                </div>
                 <input type="text" class="form-input hidden" id="reasoningEffortCustom" placeholder="例如 minimal" style="margin-top: 8px;">
             </div>
         </div>
@@ -1170,6 +1202,7 @@
             const apikey = document.getElementById('apikey').value.trim();
             const maxRetries = parseInt(document.getElementById('maxRetries').value) || 0;
             const reasoningEffortSelect = document.getElementById('reasoningEffort').value;   
+            const stream = document.getElementById('streamingEnabled').checked;
             let reasoningEffort = reasoningEffortSelect;
             if (reasoningEffortSelect === 'custom') {
                 reasoningEffort = document.getElementById('reasoningEffortCustom').value.trim();
@@ -1180,7 +1213,8 @@
                 modelname: modelname,
                 apikey: apikey,
                 max_retries: maxRetries,
-                reasoning_effort: reasoningEffort
+                reasoning_effort: reasoningEffort,
+                stream: stream
             };
         }
         
@@ -1381,27 +1415,15 @@
             log(`→ 正在恢复任务: ${checkpointId}`, 'info');
             
             try {
-                const baseurl = document.getElementById('baseurl').value.trim();
-                const modelname = document.getElementById('modelname').value.trim();
-                const apikey = document.getElementById('apikey').value.trim();
+                const config = getConfig();
                 const concurrency = parseInt(document.getElementById('concurrency').value) || 1;
-                const maxRetries = parseInt(document.getElementById('maxRetries').value) || 0;
-                const reasoningEffortSelect = document.getElementById('reasoningEffort').value;
-                let reasoningEffort = reasoningEffortSelect;
-                if (reasoningEffortSelect === 'custom') {
-                    reasoningEffort = document.getElementById('reasoningEffortCustom').value.trim();
-                }
 
                 const response = await fetch(`/api/checkpoints/${checkpointId}/resume`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        baseurl: baseurl,
-                        modelname: modelname,
-                        apikey: apikey,
-                        concurrency: concurrency,
-                        max_retries: maxRetries,
-                        reasoning_effort: reasoningEffort
+                        ...config,
+                        concurrency: concurrency
                     })
                 });
                 const result = await response.json();

@@ -50,11 +50,21 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Project specific
-output/
+# Project runtime state
+checkpoints/
+checkpoints/temp/
 temp/
-*.tmpresource/
+output/
+*.tmp
+
+# Generated source/resource workspaces
+resource/
 skills/
 summaries/
-checkpoints/
-resource/
+*_summaries/
+*_merged_summaries/
+
+# Generated character artifacts
+*-skill-main/
+*-skill-code/
+*-character-card/

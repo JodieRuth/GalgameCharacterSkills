@@ -9,7 +9,7 @@ import zlib
 import base64
 import tiktoken
 import math
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, FIRST_COMPLETED, wait
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import litellm
@@ -418,7 +418,7 @@ def _compress_with_llm(summary_files, llm_client, target_budget_tokens=115000, c
                 for tool_call in message.tool_calls:
                     if tool_call.function.name == 'remove_duplicate_sections':
                         has_remove_call = True
-                        arguments = json.loads(tool_call.function.arguments)
+                        arguments = ToolHandler.parse_tool_arguments(tool_call.function.arguments)
                         file_sections = arguments.get('file_sections', [])
                         
                         duplicate_tracking = {}
@@ -607,7 +607,7 @@ def _compress_analyses_with_llm(analyses, llm_client, target_budget_tokens=11500
                 for tool_call in message.tool_calls:
                     if tool_call.function.name == 'remove_duplicate_sections':
                         has_remove_call = True
-                        arguments = json.loads(tool_call.function.arguments)
+                        arguments = ToolHandler.parse_tool_arguments(tool_call.function.arguments)
                         file_sections = arguments.get('file_sections', [])
                         
                         processed_count = 0
@@ -690,9 +690,10 @@ def get_llm_client():
     apikey = data.get('apikey', '')
     max_retries = data.get('max_retries', 0) or None
     reasoning_effort = data.get('reasoning_effort', '')
+    stream = bool(data.get('stream', False))
     client = LLMInteraction()
-    if baseurl or modelname or apikey:
-        client.set_config(baseurl, modelname, apikey, max_retries=max_retries, reasoning_effort=reasoning_effort)
+    if baseurl or modelname or apikey or stream:
+        client.set_config(baseurl, modelname, apikey, max_retries=max_retries, reasoning_effort=reasoning_effort, stream=stream)
     return client
 
 @app.route('/')
@@ -851,7 +852,7 @@ def process_single_slice(args):
     slice_index, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id = args
     llm_client = LLMInteraction()
     if config.get('baseurl') or config.get('modelname') or config.get('apikey'):
-        llm_client.set_config(config.get('baseurl'), config.get('modelname'), config.get('apikey'), max_retries=config.get('max_retries'), reasoning_effort=config.get('reasoning_effort', ''))
+        llm_client.set_config(config.get('baseurl'), config.get('modelname'), config.get('apikey'), max_retries=config.get('max_retries'), reasoning_effort=config.get('reasoning_effort', ''), stream=config.get('stream', False))
 
     if checkpoint_id:
         existing = ckpt_manager.get_slice_result(checkpoint_id, slice_index)
@@ -882,6 +883,7 @@ def process_single_slice(args):
                     result['summary'] = content[:200] + "..." if len(content) > 200 else content
                 except Exception:
                     pass
+            result['error'] = None
             return result
 
     time.sleep(0.5 * slice_index)
@@ -899,27 +901,46 @@ def process_single_slice(args):
         'output_path': output_file_path,
         'character_analysis': None,
         'lorebook_entries': [],
-        'restored': False
+        'restored': False,
+        'error': None
     }
+    if response is None:
+        last_error = getattr(llm_client, 'last_error', None)
+        result['error'] = str(last_error) if last_error else 'LLM returned no response'
     
     if response and hasattr(response, 'choices') and response.choices:
         choice = response.choices[0]
         
         if mode == 'chara_card':
             if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+                wrote_target_file = False
+                parsed = None
+                written_content = None
                 for tool_call in choice.message.tool_calls:
                     tool_result = ToolHandler.handle_tool_call(tool_call)
                     result['tool_results'].append(tool_result)
-                result['success'] = True
-                result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
-                
-                try:
-                    with open(output_file_path, 'r', encoding='utf-8') as f:
-                        parsed = json.load(f)
+                    if hasattr(tool_call, 'function') and tool_call.function.name == 'write_file':
+                        try:
+                            args_dict = ToolHandler.parse_tool_arguments(tool_call.function.arguments)
+                            target_path = args_dict.get('file_path', '')
+                            candidate_content = args_dict.get('content', '')
+                            if target_path == output_file_path:
+                                written_content = candidate_content
+                                if os.path.exists(output_file_path) and os.path.getsize(output_file_path) > 0:
+                                    with open(output_file_path, 'r', encoding='utf-8') as f:
+                                        parsed = json.load(f)
+                                    wrote_target_file = True
+                        except Exception as e:
+                            result['tool_results'].append(f"Warning: Failed to validate saved chara_card file: {e}")
+                if wrote_target_file and isinstance(parsed, dict):
+                    result['success'] = True
+                    result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
                     result['character_analysis'] = parsed.get('character_analysis', {})
                     result['lorebook_entries'] = parsed.get('lorebook_entries', [])
-                except Exception as e:
-                    result['tool_results'].append(f"Warning: Failed to read saved file: {e}")
+                else:
+                    result['error'] = f"write_file did not produce valid chara_card output: {output_file_path}"
+                    if written_content is not None and not written_content.strip():
+                        result['error'] += " (empty content)"
             
             elif hasattr(choice, 'message') and choice.message.content:
                 content = choice.message.content
@@ -933,11 +954,31 @@ def process_single_slice(args):
                         json.dump(parsed, f, ensure_ascii=False, indent=2)
         else:
             if hasattr(choice, 'message') and hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+                wrote_target_file = False
+                written_content = None
                 for tool_call in choice.message.tool_calls:
                     tool_result = ToolHandler.handle_tool_call(tool_call)
                     result['tool_results'].append(tool_result)
-                result['success'] = True
-                result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
+                    if hasattr(tool_call, 'function') and tool_call.function.name == 'write_file':
+                        try:
+                            args_dict = ToolHandler.parse_tool_arguments(tool_call.function.arguments)
+                            target_path = args_dict.get('file_path', '')
+                            candidate_content = args_dict.get('content', '')
+                            if target_path == output_file_path:
+                                written_content = candidate_content
+                                if os.path.exists(output_file_path):
+                                    actual_size = os.path.getsize(output_file_path)
+                                    if actual_size > 0:
+                                        wrote_target_file = True
+                        except Exception as e:
+                            result['tool_results'].append(f"Warning: Failed to validate write_file output: {e}")
+                if wrote_target_file:
+                    result['success'] = True
+                    result['summary'] = f"Slice {slice_index + 1} saved to {output_file_path}"
+                else:
+                    result['error'] = f"write_file did not produce expected output file: {output_file_path}"
+                    if written_content is not None and not written_content.strip():
+                        result['error'] += " (empty content)"
             else:
                 result['success'] = True
                 result['summary'] = choice.message.content
@@ -951,7 +992,7 @@ def process_single_slice(args):
                 if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
                     for tool_call in choice.message.tool_calls:
                         if hasattr(tool_call, 'function') and tool_call.function.name == 'write_file':
-                            args_dict = json.loads(tool_call.function.arguments)
+                            args_dict = ToolHandler.parse_tool_arguments(tool_call.function.arguments)
                             ckpt_content = args_dict.get('content', '')
                             break
                     else:
@@ -970,6 +1011,30 @@ def process_single_slice(args):
             print(f"Failed to save slice {slice_index} result: {e}")
     
     return result
+
+
+def _is_connection_failure(error_message):
+    if not error_message:
+        return False
+    lowered = str(error_message).lower()
+    markers = [
+        'connection error',
+        'connectionerror',
+        'api connection error',
+        'apiconnectionerror',
+        'internalservererror',
+        'timeout',
+        'timed out',
+        'readtimeout',
+        'connecttimeout',
+        'httpcore',
+        'httpx',
+        'network',
+        'connection reset',
+        'connection aborted',
+        'remote protocol error',
+    ]
+    return any(marker in lowered for marker in markers)
 
 
 @app.route('/api/summarize', methods=['POST'])
@@ -998,7 +1063,8 @@ def _do_summarize(data):
         'modelname': data.get('modelname', ''),
         'apikey': data.get('apikey', ''),
         'max_retries': data.get('max_retries', 0) or None,
-        'reasoning_effort': data.get('reasoning_effort', '')
+        'reasoning_effort': data.get('reasoning_effort', ''),
+        'stream': bool(data.get('stream', False))
     }
     output_language = data.get('output_language', '')
     vndb_data = clean_vndb_data(data.get('vndb_data'))
@@ -1017,10 +1083,12 @@ def _do_summarize(data):
         slice_size_k = ckpt['input_params'].get('slice_size_k', slice_size_k)
         file_paths = ckpt['input_params'].get('file_paths', file_paths)
         concurrency = ckpt['input_params'].get('concurrency', concurrency)
+        config['stream'] = bool(data.get('stream', ckpt['input_params'].get('stream', config.get('stream', False))))
         checkpoint_id = resume_checkpoint_id
         
         completed_indices = set(ckpt['progress'].get('completed_items', []))
         print(f"Resuming summarize: {len(completed_indices)}/{ckpt['progress'].get('total_steps', '?')} slices already done")
+        print(f"[LLM] Resume config: stream={config.get('stream', False)}, model={config.get('modelname', '')}, baseurl={config.get('baseurl', '')}")
     else:
         if not file_paths:
             return jsonify({'success': False, 'message': '请先选择文件'})
@@ -1036,7 +1104,8 @@ def _do_summarize(data):
                 'slice_size_k': slice_size_k,
                 'file_paths': file_paths,
                 'concurrency': concurrency,
-                'reasoning_effort': config.get('reasoning_effort', '')
+                'reasoning_effort': config.get('reasoning_effort', ''),
+                'stream': config.get('stream', False)
             }
         )
 
@@ -1050,7 +1119,10 @@ def _do_summarize(data):
         return jsonify({'success': False, 'message': f'连接预检失败，无法连接到LLM服务: {preflight_err}'})
 
     current_slices = file_processor.slice_multiple_files(file_paths, slice_size_k)
-    LLMInteraction.set_total_requests(len(current_slices))
+    completed_for_counter = len(completed_indices) if resume_checkpoint_id else 0
+    LLMInteraction.set_total_requests(len(current_slices), completed=completed_for_counter)
+    if completed_for_counter:
+        print(f"[LLM] Resume slice-call counter starts after {completed_for_counter}/{len(current_slices)} completed slices")
     
     summaries = []
     errors = []
@@ -1069,6 +1141,49 @@ def _do_summarize(data):
         summary_dir = os.path.join(first_dir, f"{name}_merged_summaries")
     os.makedirs(summary_dir, exist_ok=True)
 
+    if resume_checkpoint_id:
+        restored_from_temp = []
+        repaired_missing = []
+        output_ext = '.json' if mode == 'chara_card' else '.md'
+        slice_outputs = ckpt.get('intermediate_results', {}).get('slice_outputs', {})
+        for idx in sorted(completed_indices):
+            expected_output = os.path.join(summary_dir, f"slice_{idx+1:03d}_{role_name}{output_ext}")
+            output_missing = (not os.path.exists(expected_output)) or os.path.getsize(expected_output) == 0
+            if not output_missing:
+                continue
+            temp_info = slice_outputs.get(str(idx), {})
+            temp_path = temp_info.get('temp_file')
+            if temp_path and os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
+                try:
+                    with open(temp_path, 'r', encoding='utf-8') as src:
+                        restored_content = src.read()
+                    if restored_content.strip():
+                        with open(expected_output, 'w', encoding='utf-8') as dst:
+                            dst.write(restored_content)
+                        restored_from_temp.append(idx)
+                        continue
+                except Exception as e:
+                    print(f"[LLM] Failed to restore slice {idx + 1} from checkpoint temp: {e}")
+            repaired_missing.append(idx)
+        if restored_from_temp:
+            restored_list = ', '.join(str(i + 1) for i in restored_from_temp)
+            print(f"[LLM] Restored missing outputs from checkpoint temp: {restored_list}")
+        if repaired_missing:
+            completed_indices.difference_update(repaired_missing)
+            pending_items = set(ckpt['progress'].get('pending_items', []))
+            pending_items.update(repaired_missing)
+            failed_items = set(ckpt['progress'].get('failed_items', []))
+            failed_items.difference_update(repaired_missing)
+            ckpt_manager.update_progress(
+                checkpoint_id,
+                completed_items=sorted(completed_indices),
+                pending_items=sorted(pending_items),
+                failed_items=sorted(failed_items),
+                current_phase='summarize_auto_repaired'
+            )
+            repaired_list = ', '.join(str(i + 1) for i in repaired_missing)
+            print(f"[LLM] Auto-repaired checkpoint; moved missing outputs back to pending: {repaired_list}")
+
     if not resume_checkpoint_id:
         ckpt_manager.update_progress(
             checkpoint_id,
@@ -1084,24 +1199,89 @@ def _do_summarize(data):
             output_file_path = os.path.join(summary_dir, f"slice_{i+1:03d}_{role_name}.md")
         tasks.append((i, slice_content, role_name, instruction, output_file_path, config, output_language, mode, vndb_data, checkpoint_id))
     
+    failed_indices = []
+    next_task_index = 0
+    in_flight = {}
+    consecutive_connection_failures = 0
+    abort_remaining = False
+    failure_threshold = 1
+
+    def submit_next(executor):
+        nonlocal next_task_index
+        if next_task_index >= len(tasks):
+            return False
+        task = tasks[next_task_index]
+        future = executor.submit(process_single_slice, task)
+        in_flight[future] = task
+        next_task_index += 1
+        return True
+
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        future_to_task = {executor.submit(process_single_slice, task): task for task in tasks}
-        
-        for future in as_completed(future_to_task):
-            try:
-                result = future.result()
-                if result['success']:
-                    summaries.append(result['summary'])
-                    all_results.extend(result['tool_results'])
-                    if result.get('character_analysis'):
-                        all_character_analyses.append(result['character_analysis'])
-                    if result.get('lorebook_entries'):
-                        all_lorebook_entries.append(result['lorebook_entries'])
-                else:
-                    errors.append(f'切片 {result["index"] + 1} 处理失败')
-            except Exception as e:
-                task = future_to_task[future]
-                errors.append(f'切片 {task[0] + 1} 处理异常: {str(e)}')
+        for _ in range(min(concurrency, len(tasks))):
+            submit_next(executor)
+
+        while in_flight:
+            done, _ = wait(in_flight.keys(), return_when=FIRST_COMPLETED)
+            for future in done:
+                task = in_flight.pop(future)
+                try:
+                    result = future.result()
+                    if result['success']:
+                        summaries.append(result['summary'])
+                        all_results.extend(result['tool_results'])
+                        consecutive_connection_failures = 0
+                        if result.get('character_analysis'):
+                            all_character_analyses.append(result['character_analysis'])
+                        if result.get('lorebook_entries'):
+                            all_lorebook_entries.append(result['lorebook_entries'])
+                    else:
+                        error_message = result.get('error') or 'unknown error'
+                        failed_indices.append(result['index'])
+                        errors.append(f'切片 {result["index"] + 1} 处理失败: {error_message}')
+                        if _is_connection_failure(error_message):
+                            consecutive_connection_failures += 1
+                        else:
+                            consecutive_connection_failures = 0
+                except Exception as e:
+                    failed_indices.append(task[0])
+                    errors.append(f'切片 {task[0] + 1} 处理异常: {str(e)}')
+                    if _is_connection_failure(str(e)):
+                        consecutive_connection_failures += 1
+                    else:
+                        consecutive_connection_failures = 0
+
+                if consecutive_connection_failures >= failure_threshold:
+                    abort_remaining = True
+                    print(
+                        f"[LLM] Aborting remaining summarize slices after "
+                        f"{consecutive_connection_failures} consecutive connection failures. "
+                        f"Checkpoint can be resumed later.",
+                        flush=True
+                    )
+                    break
+
+                if not abort_remaining:
+                    submit_next(executor)
+
+            if abort_remaining:
+                for future in in_flight:
+                    future.cancel()
+                break
+
+    if failed_indices or abort_remaining:
+        prog = ckpt_manager.load_checkpoint(checkpoint_id)
+        if prog:
+            completed = prog['progress'].get('completed_items', [])
+            pending = [i for i in range(len(current_slices)) if i not in completed and i not in failed_indices]
+            ckpt_manager.update_progress(
+                checkpoint_id,
+                failed_items=sorted(set(failed_indices)),
+                pending_items=pending,
+                current_phase='summarize_aborted' if abort_remaining else 'summarize_partial_failure'
+            )
+
+    if abort_remaining:
+        errors.append('检测到连续连接失败，已停止提交剩余切片；可在任务列表中恢复。')
     
     if mode == 'chara_card':
         analysis_summary_path = os.path.join(summary_dir, f"{role_name}_analysis_summary.json")
@@ -1112,7 +1292,8 @@ def _do_summarize(data):
             }, f, ensure_ascii=False, indent=2)
 
     if errors and len(summaries) == 0:
-        ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片全部失败')
+        failure_reason = '连续连接失败，已停止剩余切片' if abort_remaining else f'{len(errors)} 个切片全部失败'
+        ckpt_manager.mark_failed(checkpoint_id, failure_reason)
         return jsonify({
             'success': False,
             'message': f'归纳失败，{len(errors)} 个切片失败',
@@ -1124,7 +1305,8 @@ def _do_summarize(data):
         })
 
     if errors:
-        ckpt_manager.mark_failed(checkpoint_id, f'{len(errors)} 个切片失败，可恢复继续处理')
+        failure_reason = '连续连接失败，已停止剩余切片，可恢复继续处理' if abort_remaining else f'{len(errors)} 个切片失败，可恢复继续处理'
+        ckpt_manager.mark_failed(checkpoint_id, failure_reason)
         return jsonify({
             'success': True,
             'message': f'归纳部分完成，{len(errors)} 个切片失败，可通过任务列表继续',
@@ -1159,6 +1341,110 @@ def _do_generate_skills(data):
         return generate_character_card(data)
     else:
         return generate_skills_folder(data)
+
+
+def _skill_required_file_specs(role_name):
+    base = f"{role_name}-skill-main"
+    return [
+        {
+            'path': f"{base}/SKILL.md",
+            'purpose': 'Entry point. Define activation, roleplay rules, language matching, and the resource map. Keep this concise and point to the resource files instead of duplicating them.',
+        },
+        {
+            'path': f"{base}/soul.md",
+            'purpose': 'Inner core. Cover motivation, values, fears, contradictions, attachments, emotional center, and growth arc.',
+        },
+        {
+            'path': f"{base}/limit.md",
+            'purpose': 'Boundaries. Define unsupported facts, evidence rules, topic limits, tone limits, and roleplay exit conditions.',
+        },
+        {
+            'path': f"{base}/resource/behavior_guide.md",
+            'purpose': 'Behavior rules. Describe repeatable habits, reactions, situational defaults, decision patterns, and if-then roleplay behavior.',
+        },
+        {
+            'path': f"{base}/resource/speech_patterns.md",
+            'purpose': 'Voice and wording. Describe rhythm, vocabulary, sentence shapes, address habits, tone shifts, and reusable expression patterns.',
+        },
+        {
+            'path': f"{base}/resource/relationship_dynamics.md",
+            'purpose': 'Relationships. Cover important people or groups, emotional dynamics, trust/conflict patterns, and why each relationship matters.',
+        },
+        {
+            'path': f"{base}/resource/key_life_events.md",
+            'purpose': 'Life events. Organize formative experiences, turning points, emotional impact, and memory anchors, chronologically when possible.',
+        },
+    ]
+
+
+def _normalize_tool_path(path):
+    if not path:
+        return ''
+    return os.path.normcase(os.path.abspath(os.path.normpath(path)))
+
+
+def _tool_call_id(tool_call):
+    if hasattr(tool_call, 'id'):
+        return tool_call.id
+    return tool_call.get('id')
+
+
+def _tool_call_function_name(tool_call):
+    if hasattr(tool_call, 'function'):
+        return tool_call.function.name
+    return tool_call.get('function', {}).get('name')
+
+
+def _tool_call_arguments_raw(tool_call):
+    if hasattr(tool_call, 'function'):
+        return tool_call.function.arguments
+    return tool_call.get('function', {}).get('arguments')
+
+
+def _build_skill_file_instruction(role_name, spec, index, total, completed_files):
+    completed_text = '\n'.join(f"- {path}" for path in completed_files) if completed_files else '- None yet'
+    return f"""Now create required skill file {index + 1}/{total}: `{spec['path']}`.
+
+This file owns: {spec['purpose']}
+
+Completed files so far:
+{completed_text}
+
+Rules for this turn:
+- Call `write_file` exactly once.
+- The `file_path` argument must be exactly `{spec['path']}`.
+- Do not create or update any other file in this turn.
+- Use the summaries and the already completed files as context, but keep this file focused on its own responsibility.
+- If this is SKILL.md, explicitly describe the reading relationship between SKILL.md and the resource files.
+- Write valid markdown content."""
+
+
+def _build_skill_optional_instruction(role_name, completed_files, optional_round):
+    base = f"{role_name}-skill-main"
+    completed_text = '\n'.join(f"- {path}" for path in completed_files) if completed_files else '- None yet'
+    return f"""The seven required files are complete. Decide whether one additional file would materially improve this skill.
+
+Completed files:
+{completed_text}
+
+Rules for this optional turn:
+- If an additional file is useful, call `write_file` exactly once for a new markdown file under `{base}/resource/`.
+- Do not rewrite the seven required files.
+- Do not create more than one file in this turn.
+- If no additional file is needed, do not call any tool and simply reply that the skill folder is complete.
+- Optional round: {optional_round + 1}."""
+
+
+def _get_existing_completed_skill_files(role_name, base_dir=None):
+    completed = []
+    base_dir = base_dir or get_base_dir()
+    for spec in _skill_required_file_specs(role_name):
+        path = spec['path']
+        abs_path = os.path.join(base_dir, path)
+        if os.path.exists(abs_path) and os.path.getsize(abs_path) > 0:
+            completed.append(path)
+    return completed
+
 
 def generate_skills_folder(data):
     role_name = data.get('role_name', '')
@@ -1272,47 +1558,198 @@ def generate_skills_folder(data):
     if not preflight_ok:
         return jsonify({'success': False, 'message': f'连接预检失败，无法连接到LLM服务: {preflight_err}'})
 
-    if not resume_checkpoint_id:
-        messages, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
-        ckpt_manager.update_progress(checkpoint_id, total_steps=20, current_phase='tool_call_loop')
-    else:
-        _, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
+    base_messages, tools = llm_interaction.generate_skills_folder_init(summaries_text, role_name, output_language, vndb_data)
+    required_specs = _skill_required_file_specs(role_name)
+    max_optional_rounds = 5
 
-    max_iterations = 20
-    while iteration < max_iterations:
-        iteration += 1
+    llm_state = ckpt_manager.load_llm_state(checkpoint_id) or {}
+    state_version = llm_state.get('skill_generation_version')
+    state_completed_files = llm_state.get('completed_skill_files', []) or []
+    optional_round = int(llm_state.get('optional_round', 0) or 0)
+    pending_skill_target = llm_state.get('pending_skill_target')
+
+    if resume_checkpoint_id and state_version == 2 and llm_state.get('messages'):
+        messages = llm_state.get('messages', [])
+        all_results = llm_state.get('all_results', all_results) or all_results
+        iteration = llm_state.get('iteration_count', iteration) or 0
+    else:
+        if resume_checkpoint_id:
+            print("Upgrading generate_skills checkpoint to single-file scheduler")
+        messages = base_messages
+        iteration = 0
+        optional_round = 0
+        pending_skill_target = None
+
+    if resume_checkpoint_id:
+        existing_completed = _get_existing_completed_skill_files(role_name, script_dir)
+        state_completed_files = list(dict.fromkeys(state_completed_files + existing_completed))
+
+    completed_files = []
+    for path in state_completed_files:
+        abs_path = os.path.join(script_dir, path) if not os.path.isabs(path) else path
+        if os.path.exists(abs_path) and os.path.getsize(abs_path) > 0:
+            completed_files.append(path)
+    completed_files = list(dict.fromkeys(completed_files))
+
+    ckpt_manager.update_progress(
+        checkpoint_id,
+        total_steps=len(required_specs) + max_optional_rounds,
+        current_step=min(len([p for p in completed_files if p in [s['path'] for s in required_specs]]), len(required_specs)),
+        current_phase='skill_single_file_loop'
+    )
+
+    def save_skill_state(last_response=None, pending_target=None, phase='skill_single_file_loop'):
         ckpt_manager.save_llm_state(
-            checkpoint_id, messages=messages,
-            iteration_count=iteration, all_results=all_results
+            checkpoint_id,
+            messages=messages,
+            last_response=last_response,
+            iteration_count=iteration,
+            all_results=all_results,
+            extra_data={
+                'skill_generation_version': 2,
+                'completed_skill_files': completed_files,
+                'optional_round': optional_round,
+                'pending_skill_target': pending_target,
+                'skill_phase': phase,
+            }
         )
+
+    required_paths = [spec['path'] for spec in required_specs]
+    required_completed = [path for path in completed_files if path in required_paths]
+
+    while len(required_completed) < len(required_specs) or optional_round < max_optional_rounds:
+        if len(required_completed) < len(required_specs):
+            spec = next(spec for spec in required_specs if spec['path'] not in completed_files)
+            target_path = spec['path']
+            target_label = target_path
+            instruction = _build_skill_file_instruction(role_name, spec, required_paths.index(target_path), len(required_specs), completed_files)
+            phase = 'required'
+        else:
+            target_path = None
+            target_label = '__optional__'
+            instruction = _build_skill_optional_instruction(role_name, completed_files, optional_round)
+            phase = 'optional'
+
+        if not (pending_skill_target == target_label and messages and messages[-1].get('role') == 'user'):
+            messages.append({'role': 'user', 'content': instruction})
+
+        iteration += 1
+        save_skill_state(pending_target=target_label, phase=f'skill_{phase}_pending')
         response = llm_interaction.send_message(messages, tools, use_counter=False)
         if not response:
-            ckpt_manager.save_llm_state(
-                checkpoint_id, messages=messages,
-                last_response=None, iteration_count=iteration, all_results=all_results
-            )
+            save_skill_state(last_response=None, pending_target=target_label, phase=f'skill_{phase}_failed')
             ckpt_manager.mark_failed(checkpoint_id, 'LLM交互失败')
             return jsonify({
                 'success': False, 'message': 'LLM交互失败',
                 'checkpoint_id': checkpoint_id, 'can_resume': True
             })
+
         tool_calls = llm_interaction.get_tool_response(response)
+        message = response.choices[0].message if response and response.choices else None
+
         if not tool_calls:
-            break
-        messages.append(llm_interaction.message_to_history(response.choices[0].message))
+            if message:
+                messages.append(llm_interaction.message_to_history(message))
+            if phase == 'optional':
+                save_skill_state(last_response=response, pending_target=None, phase='skill_optional_complete')
+                break
+            save_skill_state(last_response=response, pending_target=target_label, phase='skill_required_missing_tool')
+            ckpt_manager.mark_failed(checkpoint_id, f'模型未写入必需文件: {target_path}')
+            return jsonify({
+                'success': False,
+                'message': f'模型未写入必需文件: {target_path}',
+                'checkpoint_id': checkpoint_id,
+                'can_resume': True
+            })
+
+        messages.append(llm_interaction.message_to_history(message))
+        turn_results = []
+        wrote_expected = False
+        optional_written = None
+        expected_abs = _normalize_tool_path(os.path.join(script_dir, target_path)) if target_path else None
+        base_resource_abs = _normalize_tool_path(os.path.join(script_dir, f"{role_name}-skill-main", "resource"))
+
         for tool_call in tool_calls:
-            result = ToolHandler.handle_tool_call(tool_call)
-            all_results.append(result)
-            tool_response = {
-                "role": "tool",
-                "tool_call_id": tool_call.id if hasattr(tool_call, 'id') else tool_call.get('id'),
-                "content": json.dumps({"success": True, "result": result})
-            }
-            messages.append(tool_response)
-        ckpt_manager.save_llm_state(
-            checkpoint_id, messages=messages,
-            last_response=response, iteration_count=iteration, all_results=all_results
-        )
+            call_results = []
+            if _tool_call_function_name(tool_call) != 'write_file':
+                call_results.append(f"Ignored unsupported tool: {_tool_call_function_name(tool_call)}")
+            else:
+                try:
+                    args_list = ToolHandler.parse_tool_arguments_list(_tool_call_arguments_raw(tool_call))
+                except json.JSONDecodeError as e:
+                    args_list = []
+                    call_results.append(f"Invalid tool arguments JSON: {e}")
+
+                for args in args_list:
+                    file_path = args.get('file_path') if isinstance(args, dict) else None
+                    content = args.get('content') if isinstance(args, dict) else None
+                    if not file_path or not content:
+                        call_results.append('Ignored write_file with missing file_path or content')
+                        continue
+
+                    candidate_abs = _normalize_tool_path(os.path.join(script_dir, file_path) if not os.path.isabs(file_path) else file_path)
+                    if phase == 'required':
+                        if candidate_abs != expected_abs:
+                            call_results.append(f"Ignored unexpected file for this turn: {file_path}")
+                            continue
+                        write_result = ToolHandler.write_file(os.path.join(script_dir, target_path), content)
+                        call_results.append(write_result)
+                        if os.path.exists(os.path.join(script_dir, target_path)) and os.path.getsize(os.path.join(script_dir, target_path)) > 0:
+                            wrote_expected = True
+                    else:
+                        rel_norm = file_path.replace('\\', '/')
+                        is_required_file = rel_norm in required_paths
+                        under_resource = candidate_abs.startswith(base_resource_abs + os.sep) or candidate_abs == base_resource_abs
+                        is_markdown = rel_norm.lower().endswith('.md')
+                        if is_required_file or not under_resource or not is_markdown:
+                            call_results.append(f"Ignored invalid optional file: {file_path}")
+                            continue
+                        if optional_written is not None:
+                            call_results.append(f"Ignored extra optional file in same turn: {file_path}")
+                            continue
+                        write_result = ToolHandler.write_file(os.path.join(script_dir, rel_norm), content)
+                        call_results.append(write_result)
+                        if os.path.exists(os.path.join(script_dir, rel_norm)) and os.path.getsize(os.path.join(script_dir, rel_norm)) > 0:
+                            optional_written = rel_norm
+
+            result_text = "\n".join(call_results) if call_results else 'No action taken'
+            turn_results.append(result_text)
+            messages.append({
+                'role': 'tool',
+                'tool_call_id': _tool_call_id(tool_call),
+                'content': json.dumps({'success': True, 'result': result_text}, ensure_ascii=False)
+            })
+
+        all_results.extend(turn_results)
+
+        if phase == 'required':
+            if not wrote_expected:
+                save_skill_state(last_response=response, pending_target=target_label, phase='skill_required_write_failed')
+                ckpt_manager.mark_failed(checkpoint_id, f'模型未写入指定必需文件: {target_path}')
+                return jsonify({
+                    'success': False,
+                    'message': f'模型未写入指定必需文件: {target_path}',
+                    'results': turn_results,
+                    'checkpoint_id': checkpoint_id,
+                    'can_resume': True
+                })
+            if target_path not in completed_files:
+                completed_files.append(target_path)
+            required_completed = [path for path in completed_files if path in required_paths]
+            ckpt_manager.update_progress(
+                checkpoint_id,
+                current_step=len(required_completed),
+                current_phase='skill_required_files'
+            )
+            save_skill_state(last_response=response, pending_target=None, phase='skill_required_files')
+        else:
+            if optional_written and optional_written not in completed_files:
+                completed_files.append(optional_written)
+            optional_round += 1
+            save_skill_state(last_response=response, pending_target=None, phase='skill_optional_files')
+
+        pending_skill_target = None
+
     try:
         script_dir = get_base_dir()
         main_skill_dir = os.path.join(script_dir, f"{role_name}-skill-main")
@@ -1488,8 +1925,13 @@ def generate_character_card(data):
         
         llm_state = ckpt_manager.load_llm_state(checkpoint_id)
         fields_data = llm_state.get('fields_data', {})
-        messages = llm_state.get('messages', [])
-        iteration_count = llm_state.get('iteration_count', 0)
+        if llm_state.get('chara_card_generation_version') == 2:
+            messages = llm_state.get('messages', [])
+            iteration_count = llm_state.get('iteration_count', 0)
+        else:
+            print("Upgrading generate_chara_card checkpoint to single-field scheduler")
+            messages = []
+            iteration_count = 0
         
         print(f"Resuming generate_chara_card: iteration {iteration_count}, fields: {list(fields_data.keys())}")
     else:

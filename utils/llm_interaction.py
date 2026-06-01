@@ -3,6 +3,7 @@ import json
 import sys
 import os
 from datetime import datetime
+from litellm.types.utils import Choices, Function, Message, ModelResponse, ChatCompletionMessageToolCall
 
 LANG_NAMES = {"zh": "中文", "en": "English", "ja": "日本語"}
 
@@ -61,22 +62,23 @@ class LLMInteraction:
         self.apikey = ""
         self.max_retries = 3
         self.reasoning_effort = ""
+        self.stream = False
+        self.last_error = None
     
-    def set_config(self, baseurl, modelname, apikey, max_retries=None, reasoning_effort=""):
+    def set_config(self, baseurl, modelname, apikey, max_retries=None, reasoning_effort="", stream=False):
         self.baseurl = (baseurl or "").strip()
         self.modelname = (modelname or "").strip()
         self.apikey = (apikey or "").strip()
         if max_retries is not None and max_retries > 0:
             self.max_retries = max_retries
         self.reasoning_effort = (reasoning_effort or "").strip()
+        self.stream = bool(stream)
     
     def _resolve_model(self):
         model = self.modelname
         baseurl = self.baseurl.lower() if self.baseurl else ''
         if model and '/' not in model:
-            if self.baseurl and '/v1' in baseurl:
-                model = f"openai/{model}"
-            elif 'deepseek' in baseurl:
+            if 'deepseek' in baseurl:
                 model = f"deepseek/{model}"
             elif 'anthropic' in baseurl or 'claude' in baseurl:
                 model = f"anthropic/{model}"
@@ -84,9 +86,11 @@ class LLMInteraction:
                 model = f"gemini/{model}"
             else:
                 try:
-                    parsed_model, provider, _, _ = litellm.get_llm_provider(model)
+                    parsed_model, provider, _, _ = litellm.get_llm_provider(model, api_base=self.baseurl or None)
                     if provider:
                         model = f"{provider}/{parsed_model}"
+                    elif self.baseurl and '/v1' in baseurl:
+                        model = f"openai/{model}"
                     else:
                         model = f"openai/{model}"
                 except Exception:
@@ -99,7 +103,9 @@ class LLMInteraction:
             "model": model,
             "messages": [{"role": "user", "content": "Hi"}],
             "timeout": 30,
-            "max_tokens": 5
+            "max_tokens": 5,
+            "num_retries": 0,
+            "max_retries": 0
         }
         if self.apikey:
             kwargs["api_key"] = self.apikey
@@ -117,16 +123,201 @@ class LLMInteraction:
             return False, str(e)
 
     @classmethod
-    def set_total_requests(cls, total):
+    def set_total_requests(cls, total, completed=0):
         cls._total_requests = total
-        cls._request_count = 0
+        cls._request_count = max(0, min(int(completed or 0), int(total or 0)))
+
+    def _get_stream_value(self, obj, key, default=None):
+        if obj is None:
+            return default
+        value = getattr(obj, key, None)
+        if value is not None:
+            return value
+        if hasattr(obj, 'get'):
+            try:
+                value = obj.get(key, default)
+            except Exception:
+                value = default
+            if value is not None:
+                return value
+        return default
+
+    def _append_deduped_suffix(self, existing, incoming):
+        if not incoming:
+            return existing
+        if not existing:
+            return incoming
+        if incoming in existing:
+            return existing
+        max_overlap = min(len(existing), len(incoming))
+        for overlap in range(max_overlap, 0, -1):
+            if existing.endswith(incoming[:overlap]):
+                return existing + incoming[overlap:]
+        return existing + incoming
+
+    def _stream_arguments_are_complete_json(self, arguments):
+        if not arguments or not isinstance(arguments, str):
+            return False
+        decoder = json.JSONDecoder()
+        try:
+            _, end = decoder.raw_decode(arguments)
+            return not arguments[end:].strip()
+        except Exception:
+            return False
+
+    def _new_tool_call_slot(self, tc_index=None):
+        return {
+            "stream_index": tc_index,
+            "id": None,
+            "type": "function",
+            "function": {"name": "", "arguments": ""}
+        }
+
+    def _split_complete_json_arguments(self, arguments):
+        if not arguments or not isinstance(arguments, str):
+            return [arguments or ""]
+        decoder = json.JSONDecoder()
+        position = 0
+        parts = []
+        length = len(arguments)
+        try:
+            while position < length:
+                while position < length and arguments[position].isspace():
+                    position += 1
+                if position >= length:
+                    break
+                start = position
+                _, end = decoder.raw_decode(arguments, position)
+                parts.append(arguments[start:end])
+                position = end
+            return parts or [arguments]
+        except Exception:
+            return [arguments]
+
+    def _accumulate_tool_call_delta(self, tool_call_accumulators, delta_tool_calls, index_to_slot):
+        if not delta_tool_calls:
+            return
+        for tc in delta_tool_calls:
+            tc_index = self._get_stream_value(tc, 'index', None)
+            function_obj = self._get_stream_value(tc, 'function', None)
+            fn_arguments = self._get_stream_value(function_obj, 'arguments', None) if function_obj else None
+
+            if tc_index is None:
+                tc_index = len(tool_call_accumulators)
+
+            slot_pos = index_to_slot.get(tc_index)
+            if slot_pos is None:
+                slot = self._new_tool_call_slot(tc_index)
+                tool_call_accumulators.append(slot)
+                slot_pos = len(tool_call_accumulators) - 1
+                index_to_slot[tc_index] = slot_pos
+            else:
+                slot = tool_call_accumulators[slot_pos]
+
+            existing_args = slot["function"].get("arguments") or ""
+            starts_new_object = isinstance(fn_arguments, str) and fn_arguments.lstrip().startswith('{')
+            if existing_args and starts_new_object and self._stream_arguments_are_complete_json(existing_args):
+                slot = self._new_tool_call_slot(tc_index)
+                tool_call_accumulators.append(slot)
+                slot_pos = len(tool_call_accumulators) - 1
+                index_to_slot[tc_index] = slot_pos
+
+            tc_id = self._get_stream_value(tc, 'id', None)
+            if tc_id:
+                slot["id"] = tc_id
+            tc_type = self._get_stream_value(tc, 'type', None)
+            if tc_type:
+                slot["type"] = tc_type
+            if function_obj:
+                fn_name = self._get_stream_value(function_obj, 'name', None)
+                if fn_name and not slot["function"]["name"]:
+                    slot["function"]["name"] = fn_name
+                if fn_arguments:
+                    slot["function"]["arguments"] = self._append_deduped_suffix(slot["function"]["arguments"], fn_arguments)
+
+    def _build_stream_response(self, stream_response, model):
+        content_parts = []
+        reasoning_parts = []
+        tool_call_accumulators = []
+        index_to_slot = {}
+        finish_reason = None
+        response_id = getattr(stream_response, 'id', None)
+        response_model = getattr(stream_response, 'model', None) or model
+        usage = getattr(stream_response, 'usage', None)
+
+        for chunk in stream_response:
+            if chunk is None or not hasattr(chunk, 'choices') or not chunk.choices:
+                continue
+            if response_id is None:
+                response_id = getattr(chunk, 'id', None)
+            if usage is None:
+                usage = getattr(chunk, 'usage', None)
+            choice = chunk.choices[0]
+            choice_finish_reason = self._get_stream_value(choice, 'finish_reason', None)
+            if choice_finish_reason:
+                finish_reason = choice_finish_reason
+            delta = self._get_stream_value(choice, 'delta', None)
+            message = self._get_stream_value(choice, 'message', None)
+            current = delta or message
+            if not current:
+                continue
+            content = self._get_stream_value(current, 'content', None)
+            if content:
+                content_parts.append(content)
+            reasoning_content = self._get_stream_value(current, 'reasoning_content', None)
+            if reasoning_content:
+                reasoning_parts.append(reasoning_content)
+            self._accumulate_tool_call_delta(tool_call_accumulators, self._get_stream_value(current, 'tool_calls', None), index_to_slot)
+
+        tool_calls = None
+        if tool_call_accumulators:
+            tool_calls = []
+            used_ids = set()
+            for call_index, tc in enumerate(tool_call_accumulators):
+                argument_parts = self._split_complete_json_arguments(tc["function"].get("arguments") or "")
+                for part_index, argument_text in enumerate(argument_parts):
+                    base_id = tc.get("id") or f"call_stream_{call_index}"
+                    call_id = base_id if part_index == 0 else f"{base_id}_{part_index}"
+                    unique_id = call_id
+                    suffix = 1
+                    while unique_id in used_ids:
+                        unique_id = f"{call_id}_{suffix}"
+                        suffix += 1
+                    used_ids.add(unique_id)
+                    tool_calls.append(
+                        ChatCompletionMessageToolCall(
+                            id=unique_id,
+                            type=tc.get("type") or "function",
+                            function=Function(
+                                name=tc["function"].get("name") or None,
+                                arguments=argument_text or ""
+                            )
+                        )
+                    )
+        message = Message(
+            content=''.join(content_parts) or None,
+            role='assistant',
+            tool_calls=tool_calls,
+            reasoning_content=''.join(reasoning_parts) or None,
+        )
+        response = ModelResponse(
+            id=response_id,
+            model=response_model,
+            choices=[Choices(index=0, finish_reason=finish_reason, message=message)],
+            usage=usage,
+            stream=False,
+        )
+        return response
     
     def send_message(self, messages, tools=None, max_retries=None, use_counter=True):
         import time
         
         if max_retries is None:
             max_retries = self.max_retries
+        max_retries = max(1, int(max_retries or 1))
+        self.last_error = None
         model = self._resolve_model()
+        provider_name = model.split('/', 1)[0] if '/' in model else 'unknown'
         
         api_key_preview = self.apikey[:10] + "..." if self.apikey and len(self.apikey) > 10 else (self.apikey if self.apikey else "None")
         
@@ -135,9 +326,11 @@ class LLMInteraction:
             current = LLMInteraction._request_count
             total = LLMInteraction._total_requests
             remaining = total - current
-            print(f"[LLM] Request {current}/{total} - Model: {model}, Base URL: {self.baseurl}")
+            request_label = f"slice-call {current}/{total}"
+            print(f"[LLM] Request {request_label} - Provider: {provider_name}, Model: {model}, Base URL: {self.baseurl}")
         else:
-            print(f"[LLM] Request - Model: {model}, Base URL: {self.baseurl}")
+            request_label = "single-call"
+            print(f"[LLM] Request {request_label} - Provider: {provider_name}, Model: {model}, Base URL: {self.baseurl}")
         
         print(f"[LLM] API Key: {api_key_preview}, Length: {len(self.apikey) if self.apikey else 0}")
         print(f"[LLM] Messages count: {len(messages)}, Tools: {'Yes' if tools else 'No'}")
@@ -145,7 +338,9 @@ class LLMInteraction:
         kwargs = {
             "model": model,
             "messages": messages,
-            "timeout": 300
+            "timeout": 300,
+            "num_retries": 0,
+            "max_retries": 0
         }
         
 
@@ -167,19 +362,24 @@ class LLMInteraction:
             kwargs["api_base"] = self.baseurl
         if self.reasoning_effort:
             kwargs["reasoning_effort"] = self.reasoning_effort
+        if self.stream:
+            kwargs["stream"] = True
         
-        print(f"[LLM] Attempt 1/{max_retries}")
-        
+        last_error = None
         for attempt in range(max_retries):
+            attempt_start = time.time()
             try:
-                response = litellm.completion(**kwargs)
+                print(f"[LLM] Attempt {attempt + 1}/{max_retries} started ({request_label}, stream={self.stream})", flush=True)
+                raw_response = litellm.completion(**kwargs)
+                response = self._build_stream_response(raw_response, model) if self.stream else raw_response
+                elapsed = time.time() - attempt_start
                 if use_counter and LLMInteraction._total_requests > 0:
                     current = LLMInteraction._request_count
                     total = LLMInteraction._total_requests
                     remaining = total - current
-                    print(f"[LLM] Sent {current} requests, {remaining}/{total} remaining")
+                    print(f"[LLM] Attempt {attempt + 1}/{max_retries} succeeded in {elapsed:.1f}s ({request_label}); {remaining}/{total} slice-calls remaining")
                 else:
-                    print(f"[LLM] Request completed")
+                    print(f"[LLM] Attempt {attempt + 1}/{max_retries} succeeded in {elapsed:.1f}s ({request_label})")
                 if response and hasattr(response, 'choices') and response.choices:
                     choice = response.choices[0]
                     if hasattr(choice, 'message'):
@@ -188,19 +388,22 @@ class LLMInteraction:
                             print(f"[LLM] Tool calls: {len(msg.tool_calls)}")
                 return response
             except Exception as e:
-                print(f"[LLM] Attempt {attempt + 1} failed: {e}")
+                last_error = e
+                elapsed = time.time() - attempt_start
+                print(f"[LLM] Attempt {attempt + 1}/{max_retries} failed after {elapsed:.1f}s ({request_label}): {type(e).__name__}: {e}", flush=True)
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt
-                    print(f"[LLM] Retrying in {wait_time} seconds...")
+                    print(f"[LLM] Retrying {request_label} in {wait_time} seconds...", flush=True)
                     time.sleep(wait_time)
                 else:
                     if use_counter and LLMInteraction._total_requests > 0:
                         current = LLMInteraction._request_count
                         total = LLMInteraction._total_requests
                         remaining = total - current
-                        print(f"[LLM] Sent {current} requests, {remaining}/{total} remaining - Failed")
+                        print(f"[LLM] Request {request_label} failed after {max_retries} attempts; {remaining}/{total} slice-calls remaining")
                     else:
-                        print(f"[LLM] Request failed")
+                        print(f"[LLM] Request {request_label} failed after {max_retries} attempts")
+                    self.last_error = last_error
                     return None
     
     def get_tool_response(self, response):
@@ -570,7 +773,7 @@ Character names, location names, and other proper nouns can be translated or kep
                 "type": "function",
                 "function": {
                     "name": "write_file",
-                    "description": "Write file to local disk. You can call this tool multiple times to create multiple files.",
+                    "description": "Write exactly one file requested by the program for the current turn.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -766,7 +969,7 @@ RESOURCE WRITING RULES:
 - Make the files useful as references for future roleplay, not as literary essays
 
 IMPORTANT INSTRUCTIONS:
-1. Use the write_file tool multiple times if needed
+1. The program requests files one at a time. In each assistant turn, call write_file exactly once for the requested file only.
 2. Create all seven required files:
    - {role_name}-skill-main/SKILL.md
    - {role_name}-skill-main/soul.md
@@ -789,7 +992,7 @@ After creating the seven required files, you MAY create additional files in the 
 - Character development notes
 - Any other supplementary material that would be valuable
 
-Use the write_file tool to create all required files."""
+Use the write_file tool only after the program names the current target file."""
 
         if output_language:
             lang_name = LANG_NAMES.get(output_language, output_language)
@@ -813,7 +1016,7 @@ ALL output must be in {lang_name}, regardless of the source text language."""
             },
             {
                 "role": "user",
-                "content": f"Please generate a complete skill folder for character '{role_name}' based on the following compacted summaries:\n{summaries}\n\nCreate the single required folder structure exactly as specified. In SKILL.md, explicitly define the dependency and reading relationship between SKILL.md and the other markdown resources, including which file owns which type of information. You can call the write_file tool multiple times. After creating all required files, indicate completion."
+                "content": f"Use the following compacted summaries as the source material for character '{role_name}':\n{summaries}\n\nThe program will now request one skill file at a time. Do not create multiple files in one assistant turn. For each subsequent per-file instruction, call write_file exactly once for the requested target path."
             }
         ]
         
@@ -940,35 +1143,25 @@ Be thorough and aggressive in identifying duplicates."""
         
         return messages, tools
 
-    def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language="", checkpoint_id=None, ckpt_messages=None, ckpt_fields_data=None, ckpt_iteration_count=None):
-        from utils.tool_handler import ToolHandler
-        
-        integrated_analysis = self._integrate_analyses(role_name, all_analyses, vndb_data)
-        
-        vndb_ref = _format_vndb_section(vndb_data, "VNDB REFERENCE DATA (HIGHEST PRIORITY - Use these values as authoritative source for character appearance and basic info)", bullet="")
-        
-        tools = [
+    def _write_field_tools(self):
+        return [
             {
                 "type": "function",
                 "function": {
                     "name": "write_field",
-                    "description": "Write a specific field to the character card JSON file. Call this tool multiple times to write different fields.",
+                    "description": "Write exactly one requested field to the character card JSON data.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "field_name": {
                                 "type": "string",
-                                "description": "The name of the field to write. Must be one of: name, description, personality, first_mes, mes_example, scenario, system_prompt, post_history_instructions, depth_prompt",
+                                "description": "The exact field name requested for this turn.",
                                 "enum": ["name", "description", "personality", "first_mes", "mes_example", "scenario",
                                         "system_prompt", "post_history_instructions", "depth_prompt"]
                             },
                             "content": {
                                 "type": "string",
-                                "description": "The content to write for this field. For string fields, provide the text. For list fields (like personality traits), provide a JSON array string."
-                            },
-                            "is_complete": {
-                                "type": "boolean",
-                                "description": "Set to true if this is the last field you want to write. The system will finalize the character card after this."
+                                "description": "The complete content for the requested field."
                             }
                         },
                         "required": ["field_name", "content"]
@@ -976,14 +1169,47 @@ Be thorough and aggressive in identifying duplicates."""
                 }
             }
         ]
-        
+
+    def _character_card_field_specs(self):
+        return [
+            ("name", "Canonical display name. Usually the character name only."),
+            ("description", "Main SillyTavern description using structured bracket sections for personality, body, outfit, likes, dislikes, and roleplay-relevant facts."),
+            ("personality", "Compact personality summary with the most important traits and contradictions."),
+            ("system_prompt", "Main roleplay instructions. Define speech, behavior, boundaries, and how to stay in character."),
+            ("first_mes", "Opening message/greeting in the character voice."),
+            ("mes_example", "Example dialogue blocks using <START>, {{user}}, and {{char}}."),
+            ("scenario", "Default setting and relationship context for the chat."),
+            ("post_history_instructions", "Short reinforcement instruction applied after chat history."),
+            ("depth_prompt", "Deep psychology layer and hidden motivations for in-character consistency."),
+        ]
+
+    def _build_character_card_field_instruction(self, field_name, field_purpose, completed_fields):
+        completed_text = ", ".join(completed_fields) if completed_fields else "none"
+        return f"""Now write exactly one character-card field: `{field_name}`.
+
+Field purpose: {field_purpose}
+Completed fields: {completed_text}
+
+Rules for this turn:
+- Call `write_field` exactly once.
+- The `field_name` argument must be exactly `{field_name}`.
+- Do not write or rewrite any other field.
+- Return the complete final content for this field, not notes about it.
+- Keep this field consistent with already completed fields and the source character data."""
+    def generate_character_card_with_tools(self, role_name, all_analyses, all_lorebook_entries, output_path, creator="", vndb_data=None, output_language="", checkpoint_id=None, ckpt_messages=None, ckpt_fields_data=None, ckpt_iteration_count=None):
+        from utils.tool_handler import ToolHandler
+
+        integrated_analysis = self._integrate_analyses(role_name, all_analyses, vndb_data)
+        vndb_ref = _format_vndb_section(vndb_data, "VNDB REFERENCE DATA (HIGHEST PRIORITY - Use these values as authoritative source for character appearance and basic info)", bullet="")
+        tools = self._write_field_tools()
+
         merged_entries = ToolHandler.merge_lorebook_entries(all_lorebook_entries)
         lorebook_entries = ToolHandler.build_lorebook_entries(merged_entries, start_id=0)
-        
+
         base_name = role_name
         if vndb_data and vndb_data.get('name'):
             base_name = vndb_data['name']
-        
+
         fields_data = {
             "name": base_name,
             "description": "",
@@ -1003,13 +1229,13 @@ Be thorough and aggressive in identifying duplicates."""
         }
 
         is_resuming = ckpt_messages is not None and len(ckpt_messages) > 0
-        if is_resuming and ckpt_fields_data:
+        if ckpt_fields_data:
             for key in fields_data:
                 if key in ckpt_fields_data and ckpt_fields_data[key]:
                     if key == "character_book_entries":
                         continue
                     fields_data[key] = ckpt_fields_data[key]
-        
+
         language_instruction = ""
         if output_language:
             lang_name = LANG_NAMES.get(output_language, output_language)
@@ -1047,7 +1273,7 @@ CHARACTER DATA:
 4. **Earlier Events** - Use for backstory and character history only
 
 YOUR TASK:
-Generate a complete SillyTavern v3 character card by calling the write_field tool multiple times.{language_instruction}
+Generate a complete SillyTavern v3 character card one field at a time. The program will tell you which single field to write on each turn.{language_instruction}
 
 AVAILABLE FIELDS:
 1. **name** - Character name (string)
@@ -1089,7 +1315,11 @@ NOTE: Do NOT write creatorcomment, creator_notes, or world_name fields. These wi
 - Include physical mannerisms
 - Set personality boundaries
 
-Call write_field for each field. Set is_complete=true on the last call."""
+IMPORTANT TOOL RULE:
+When the program requests one field, call `write_field` exactly once for that field only."""
+
+        field_specs = self._character_card_field_specs()
+        field_order = [field_name for field_name, _ in field_specs]
 
         if is_resuming:
             messages = ckpt_messages
@@ -1097,94 +1327,133 @@ Call write_field for each field. Set is_complete=true on the last call."""
         else:
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Generate the complete character card for '{role_name}'. Use the write_field tool to write each field. Start with the most important fields (name, description, system_prompt, first_mes)."}
+                {"role": "user", "content": f"We will generate the character card for '{role_name}' one field at a time. Wait for the per-field instruction, then call write_field exactly once."}
             ]
             tool_call_count = 0
-        
-        max_tool_calls = 50 
-        
-        while tool_call_count < max_tool_calls:
-            if checkpoint_id:
-                from utils.checkpoint_manager import CheckpointManager
-                mgr = CheckpointManager()
-                mgr.save_llm_state(
-                    checkpoint_id, messages=messages,
-                    iteration_count=tool_call_count,
-                    fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
-                )
 
-            response = self.send_message(messages, tools=tools, use_counter=False)
-            
-            if not response or not response.choices:
+        completed_fields = [field_name for field_name in field_order if fields_data.get(field_name)]
+        max_attempts_per_field = 3
+
+        for field_name, field_purpose in field_specs:
+            if fields_data.get(field_name):
+                continue
+
+            field_written = False
+            for attempt in range(max_attempts_per_field):
+                instruction = self._build_character_card_field_instruction(field_name, field_purpose, completed_fields)
+                messages.append({"role": "user", "content": instruction})
+
                 if checkpoint_id:
                     from utils.checkpoint_manager import CheckpointManager
                     mgr = CheckpointManager()
                     mgr.save_llm_state(
                         checkpoint_id, messages=messages,
-                        last_response=None, iteration_count=tool_call_count,
-                        fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
+                        iteration_count=tool_call_count,
+                        fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'},
+                        extra_data={
+                            'chara_card_generation_version': 2,
+                            'current_field': field_name,
+                            'completed_fields': completed_fields,
+                        }
+                    )
+
+                response = self.send_message(messages, tools=tools, use_counter=False)
+                if not response or not response.choices:
+                    if checkpoint_id:
+                        from utils.checkpoint_manager import CheckpointManager
+                        mgr = CheckpointManager()
+                        mgr.save_llm_state(
+                            checkpoint_id, messages=messages,
+                            last_response=None, iteration_count=tool_call_count,
+                            fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'},
+                            extra_data={
+                                'chara_card_generation_version': 2,
+                                'current_field': field_name,
+                                'completed_fields': completed_fields,
+                            }
+                        )
+                    return {
+                        'success': False,
+                        'message': f'LLM交互失败，字段未完成: {field_name}',
+                        'can_resume': True
+                    }
+
+                message = response.choices[0].message
+                messages.append(self.message_to_history(message))
+                tool_call_count += 1
+
+                valid_write = False
+                if hasattr(message, 'tool_calls') and message.tool_calls:
+                    for tool_call in message.tool_calls:
+                        result_message = "Ignored tool call"
+                        if tool_call.function.name == "write_field":
+                            try:
+                                args_list = ToolHandler.parse_tool_arguments_list(tool_call.function.arguments)
+                            except Exception as e:
+                                args_list = []
+                                result_message = f"Invalid write_field arguments: {e}"
+                            for args in args_list:
+                                candidate_field = args.get("field_name") if isinstance(args, dict) else None
+                                content = args.get("content") if isinstance(args, dict) else None
+                                if candidate_field == field_name and content:
+                                    fields_data[field_name] = content
+                                    valid_write = True
+                                    result_message = f"Field {field_name} written successfully"
+                                    break
+                                elif candidate_field:
+                                    result_message = f"Ignored unexpected field {candidate_field}; expected {field_name}"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": json.dumps({"status": "success", "message": result_message}, ensure_ascii=False)
+                        })
+
+                if valid_write:
+                    field_written = True
+                    if field_name not in completed_fields:
+                        completed_fields.append(field_name)
+                    if checkpoint_id:
+                        from utils.checkpoint_manager import CheckpointManager
+                        mgr = CheckpointManager()
+                        mgr.save_llm_state(
+                            checkpoint_id, messages=messages,
+                            last_response=response, iteration_count=tool_call_count,
+                            fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'},
+                            extra_data={
+                                'chara_card_generation_version': 2,
+                                'current_field': None,
+                                'completed_fields': completed_fields,
+                            }
+                        )
+                    break
+
+                messages.append({
+                    "role": "user",
+                    "content": f"The previous turn did not write `{field_name}` correctly. Try again and call write_field exactly once with field_name `{field_name}`."
+                })
+
+            if not field_written:
+                if checkpoint_id:
+                    from utils.checkpoint_manager import CheckpointManager
+                    mgr = CheckpointManager()
+                    mgr.save_llm_state(
+                        checkpoint_id, messages=messages,
+                        iteration_count=tool_call_count,
+                        fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'},
+                        extra_data={
+                            'chara_card_generation_version': 2,
+                            'current_field': field_name,
+                            'completed_fields': completed_fields,
+                        }
                     )
                 return {
                     'success': False,
-                    'message': 'LLM交互失败',
+                    'message': f'字段生成失败: {field_name}',
                     'can_resume': True
                 }
-            
-            message = response.choices[0].message
-            
-            if hasattr(message, 'tool_calls') and message.tool_calls:
-                for tool_call in message.tool_calls:
-                    if tool_call.function.name == "write_field":
-                        try:
-                            args = json.loads(tool_call.function.arguments)
-                            field_name = args.get("field_name")
-                            content = args.get("content")
-                            is_complete = args.get("is_complete", False)
-                            
-                            if field_name in ["creatorcomment", "creator_notes", "world_name"]:
-                                pass
-                            elif field_name and field_name in fields_data:
-                                fields_data[field_name] = content
-                                if is_complete:
-                                    tool_call_count = max_tool_calls  
-                        except Exception:
-                            pass
-                
-                messages.append(self.message_to_history(message))
-                
-                for tool_call in message.tool_calls:
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps({"status": "success", "message": f"Field written successfully"})
-                    })
-                
-                tool_call_count += 1
-            else:
-                content = message.content
-                
-                try:
-                    parsed = ToolHandler.parse_llm_json_response(content)
-                    if parsed:
-                        for key in fields_data.keys():
-                            if key in parsed and key != "character_book_entries":
-                                fields_data[key] = parsed[key]
-                except Exception:
-                    pass
-                
-                break
 
-            if checkpoint_id:
-                from utils.checkpoint_manager import CheckpointManager
-                mgr = CheckpointManager()
-                mgr.save_llm_state(
-                    checkpoint_id, messages=messages,
-                    last_response=response, iteration_count=tool_call_count,
-                    fields_data={k: v for k, v in fields_data.items() if k != 'character_book_entries'}
-                )
-        
         template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'utils', 'chara_card_template.json')
-        
+
         field_mappings = {
             "{{name}}": fields_data["name"],
             "{{description}}": fields_data["description"],
@@ -1202,9 +1471,9 @@ Call write_field for each field. Set is_complete=true on the last call."""
             "{{depth_prompt}}": fields_data["depth_prompt"],
             "{{character_book_entries}}": fields_data["character_book_entries"],
         }
-        
+
         result = ToolHandler.fill_json_template(template_path, output_path, field_mappings)
-        
+
         if result.startswith("Template filling failed"):
             return {
                 'success': False,
@@ -1217,7 +1486,7 @@ Call write_field for each field. Set is_complete=true on the last call."""
             'fields_written': [k for k, v in fields_data.items() if v and k != 'character_book_entries'],
             'result': result
         }
-    
+
     def _integrate_analyses(self, role_name, all_analyses, vndb_data=None):
         vndb_section = _format_vndb_section(vndb_data, "## VNDB Character Information", bullet="")
         

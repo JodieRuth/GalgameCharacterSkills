@@ -16,6 +16,32 @@ class ToolHandler:
             return f"File write failed: {str(e)}"
     
     @staticmethod
+    def parse_tool_arguments_list(arguments_str):
+        if not isinstance(arguments_str, str):
+            return [arguments_str]
+
+        decoder = json.JSONDecoder()
+        position = 0
+        parsed = []
+        length = len(arguments_str)
+
+        while position < length:
+            while position < length and arguments_str[position].isspace():
+                position += 1
+            if position >= length:
+                break
+            value, end = decoder.raw_decode(arguments_str, position)
+            parsed.append(value)
+            position = end
+
+        return parsed
+
+    @staticmethod
+    def parse_tool_arguments(arguments_str):
+        parsed = ToolHandler.parse_tool_arguments_list(arguments_str)
+        return parsed[0] if parsed else {}
+
+    @staticmethod
     def handle_tool_call(tool_call):
         if hasattr(tool_call, 'function'):
             function_name = tool_call.function.name
@@ -24,21 +50,25 @@ class ToolHandler:
             function_name = tool_call['function']['name']
             arguments_str = tool_call['function']['arguments']
         
-        if isinstance(arguments_str, str):
-            arguments = json.loads(arguments_str)
-        else:
-            arguments = arguments_str
+        try:
+            arguments_list = ToolHandler.parse_tool_arguments_list(arguments_str)
+        except json.JSONDecodeError as e:
+            preview = str(arguments_str)[:500].replace('\n', '\\n')
+            return f"Invalid tool arguments JSON: {e}; preview={preview}"
         
-        if function_name == 'write_file':
-            file_path = arguments.get('file_path')
-            content = arguments.get('content')
-            if file_path and content:
-                return ToolHandler.write_file(file_path, content)
+        results = []
+        for arguments in arguments_list:
+            if function_name == 'write_file':
+                file_path = arguments.get('file_path') if isinstance(arguments, dict) else None
+                content = arguments.get('content') if isinstance(arguments, dict) else None
+                if file_path and content:
+                    results.append(ToolHandler.write_file(file_path, content))
+                else:
+                    results.append("Missing required parameters")
             else:
-                return "Missing required parameters"
-        else:
-            return f"Unknown tool: {function_name}"
-    
+                results.append(f"Unknown tool: {function_name}")
+        return "\n".join(results) if results else "No tool arguments"
+
     @staticmethod
     def fill_json_template(template_path, output_path, field_mappings):
         try:
